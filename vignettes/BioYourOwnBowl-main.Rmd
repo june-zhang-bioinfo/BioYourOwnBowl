@@ -1,0 +1,417 @@
+---
+title: "Getting Started with BioYourOwnBowl"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting Started with BioYourOwnBowl}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  dpi = 100,
+  fig.width = 5,
+  fig.height = 3,
+  warning = TRUE,
+  message = TRUE
+)
+```
+
+## Introduction
+
+**BioYourOwnBowl** provides a comprehensive pipeline for single-cell RNA-seq analysis using Seurat. This vignette demonstrates the main workflow using example data from article: https://pmc.ncbi.nlm.nih.gov/articles/PMC8376199/. To maximize the efficiency, this object is downsampled and has metadata included.
+
+[placeholder: pipeline visualization? and explanation?]
+[placeholder: what is cluster-based cell qc and why, why iterate different k and r combinations, why selected features (prior knowledge)]
+
+## Installation
+
+```{r eval=FALSE}
+# Install from GitHub
+remotes::install_github("june-zhang-bioinfo/BioYourOwnBowl")
+```
+
+## Load Libraries
+
+```{r setup}
+library(BioYourOwnBowl)
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(circlize)
+library(grid)
+library(eulerr)
+library(RColorBrewer)
+library(treemap)
+library(stringr)
+
+library(grDevices)
+library(stats)
+library(utils)
+library(glue)
+library(jsonlite)
+library(Matrix)
+library(harmony)
+library(ComplexHeatmap)
+library(pheatmap)
+library(anndata)
+library(convert2anndata)
+library(scCustomize)
+library(rlang)
+library(matrixStats)
+library(sessioninfo)
+library(yaml)
+```
+
+## Prepare Example Data
+
+We'll start with loading example dataset.
+
+```{r eval=TRUE, echo=TRUE}
+data_dir_base <- system.file("extdata", package = "BioYourOwnBowl")
+data_path <- file.path(data_dir_base, "GSE178756_downsampled.rds")
+seurat_obj <- readRDS(data_path)
+seurat_obj
+```
+
+## Define Color Palette
+
+```{r eval=TRUE, echo=TRUE}
+colors <- c(
+  "#e6194B", 
+  "#86D3B2", 
+  "#5E8DBA", 
+  "#F7A131", 
+  "#911eb4", 
+  "#46f0f0", 
+  "#fabebe", 
+  "#bcf60c", 
+  "#B88C6D",
+  "#4d88e8", 
+  "#FFFB47", 
+  "#A1A74A",
+  "#7BB1A4", 
+  "#b15928",
+  "#C493D4", 
+  "#f58231",
+  "#0072B2",
+  "#D55E00", 
+  "#009E73",
+  "#CC79A7",
+  "#F0E442" 
+)
+```
+
+## Define Selected Features
+
+You can provide genes of interest. 
+These genes will be used for Highly variable genes information (HVG_info.csv) and main-variance plot (so you can see if they are considered as variable features) and the dot plot for your clustering results.
+
+```{r eval=TRUE, echo=TRUE}
+selected_features <- c(
+  "CD8A", "CD8B",
+  "CD3D", "CD3E", "CD3G",
+  "GZMB", "GZMA", "GZMH",
+  "PRF1", "NKG7", "GNLY",
+  "IL2RA", "TNFRSF9", "CD69",
+  "MKI67", "TOP2A",
+  "PDCD1", "LAG3", "TIGIT",
+  "CTLA4", "HAVCR2",
+  "CCR7", "SELL", "TCF7",
+  "LEF1", "IL7R"
+)
+```
+
+## Run Pipeline
+
+The `optimize_single_cell()` function performs comprehensive single-cell analysis:
+
+```{r eval=TRUE, echo=TRUE, error=TRUE, include=TRUE}
+seurat_obj <- optimize_single_cell(
+  object = seurat_obj,
+
+  # Normalization parameters
+  normalization.method = "LogNormalize",
+  vf.method = "vst",
+  model.use = "linear",
+  nfeatures = 2000,
+
+  # Quality control
+  mt.cutoff = 25,
+  gene_filter = 100,
+
+  # Clustering parameters
+  k_range = c(10, 20),
+  resolution_range = seq(0.1, 0.2, 0.05),
+  clusters_min = 6,
+  clusters_max = 9,
+
+  # UMAP parameters
+  min.dist = 0.7,
+  seed = 17,
+
+  # Regression (optional)
+  regress.out = NULL,
+
+  # Visualization
+  colors = colors,
+  cluster_distribution_layers = c("Time_point", "Cohort"),
+  cluster_distribution_layer_orders = list(
+    Time_point = c("Pre_Tx", "W4", "Post_Tx", "Normal")
+  ),
+
+  # Selected features for visualization
+  features = selected_features,
+
+  # Output directory
+  out_dir = "/Users/zz005/Documents/github/R/vignettes_results"
+)
+
+seurat_obj
+```
+
+## Understanding the Parameters
+
+### Normalization & Feature Selection
+
+- **vf.method**: Method for variable feature selection
+  - `"vst"`: Variance stabilizing transformation (default)
+  - `"dispersion"`: Dispersion-based selection
+  - `"pseudobulk"`: Pseudobulk aggregation
+  - `"sct"`: SCTransform
+  - `"anchor"`: Integration anchors
+
+- **nfeatures**: Number of variable features to select (default: 2000)
+
+### Quality Control
+
+- **mt.cutoff**: Maximum mitochondrial content percentage (default: 25)
+- **gene_filter**: Minimum cells a gene must be expressed in (default: 50)
+
+### Clustering Optimization
+
+The function tests multiple clustering parameters:
+
+- **k_range**: Neighbor counts for graph construction
+- **resolution_range**: Resolution values for Louvain clustering
+- **clusters_min/max**: Expected number of clusters
+
+### Output Files
+
+The pipeline generates:
+
+- `logs/` - Parameters and session info
+- `qc.pdf` - Quality control plots
+- `HVG_info.csv` - The ranking of variable features and the number of cells express them
+- `elbow.png` - PC selection plot
+- `Mean-variance_*.png` - Variable feature plots
+- `PCs_top-genes.csv` - Top genes per principal component
+- `dimplot.pdf` - Dimplots showing clustering results
+- `k*_r*_barplot.png` - Cluster distribution plots
+- `k*_r*_dotplot.pdf` - Dot plots for each clustering, including selected features and DGE
+- `k*_r*_heatmap.png` - Expression heatmaps for DGE
+- `object.rds` - Final processed Seurat object
+
+## Customize your own pipeline
+
+### Quality control
+n* are used to trace the dimension changes over the steps.
+
+```{r eval=FALSE, echo=TRUE}
+# Define your variables
+output_dir <- "your/path"
+gene_filter = 50
+vf.method = "dispersion"
+regress.out = c("MKI67")
+
+
+pdf("qc.pdf")
+
+n1 <- dim(object)[1]
+object <- filter_genes_by_expression(object, gene_filter = gene_filter, assay = "RNA")
+n2 <- dim(object)[1]
+
+# cluster-based cell filtering
+object <- preprocess_obj(object,
+                         vf.method = vf.method,
+                         nfeatures = nfeatures,
+                         regress.out = regress.out)
+object <- RunPCA(object, npcs = 30, verbose = F)
+object <- RunUMAP(object, reduction = reduction, dims = 1:30, seed.use = seed)
+object <- FindNeighbors(object, dims = 1:30)
+object <- FindClusters(object, resolution = 2)
+
+print(DimPlot(object, label = TRUE, label.box = TRUE))
+print(FeaturePlot(object, features = "percent.mt"))
+print(FeaturePlot(object, features = "nCount_RNA"))
+
+n4 <- dim(object)[2]
+object <- remove_low_quality_clusters(object)
+object <- subset(object, percent.mt < 25)
+
+n5 <- dim(object)[2]
+grid.newpage()
+grid.draw(grid.text(
+  paste0("Cells before QC:", n4, "\n",
+         "Cells after QC:", n5),
+  x = 0.5, y = 0.6
+))
+
+object <- filter_genes_by_expression(object, gene_filter = gene_filter)
+n3 <- dim(object)[1]
+grid.draw(grid.text(
+  paste0("Genes before filtering:", n1, "\n",
+         "Genes after 1st filtering:", n2, "\n",
+         "Genes after 2nd filtering", n3),
+  x = 0.5, y = 0.4
+))
+
+dev.off()
+```
+
+### If you prefer hard cutoff, you can skip the last chunk and do this:
+
+```{r eval=FALSE, echo=TRUE}
+pdf("qc.pdf")
+
+# gene filtering
+n1 <- dim(object)[1]
+object <- filter_genes_by_expression(object, gene_filter = gene_filter, assay = "RNA")
+n2 <- dim(object)[1]
+
+# choose cutoff based on violin plot
+Vlnplot(object, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"))
+
+n3 <- dim(object)[2]
+obj <- subset(object, nFeature_RNA > 100 & nCount_RNA < 2000 & percent.mt < 25)
+n4 <- dim(object)[2]
+
+grid.draw(grid.text(
+  paste0("Cells before QC:", n3, "\n",
+         "Cells after QC:", n4),
+  x = 0.5, y = 0.6
+))
+
+object <- filter_genes_by_expression(object, gene_filter = gene_filter, assay = "RNA")
+n5 <- dim(object)[1]
+
+grid.newpage()
+grid.draw(grid.text(
+  paste0("Genes before filtering:", n1, "\n",
+         "Genes after 1st filtering", n2, "\n",
+         "Genes after 2nd filtering", n5),
+  x = 0.5, y = 0.4
+))
+dev.off()
+```
+
+### Preprocess and dimensional reduction
+
+```{r eval=FALSE, echo=TRUE}
+object <- preprocess_obj(object,
+                         vf.method = vf.method,
+                         nfeatures = nfeatures,
+                         regress.out = regress.out)
+
+# export gene rank - conditionally applicable
+hvf <- HVFInfo(object)
+hvf$gene <- rownames(hvf)
+hvf <- hvf[order(hvf$mvp.dispersion, decreasing = T), ]
+
+hvf$rank <- 1:nrow(hvf)
+hvf$features <- "No"
+hvf$features[hvf$gene %in% features] <- "Yes"
+expr_matrix <- GetAssayData(object, layer = "counts")
+gene_cell_counts <- Matrix::rowSums(expr_matrix > 0)
+hvf$num_cells_expressed <- gene_cell_counts[match(hvf$gene, names(gene_cell_counts))]
+write.csv(hvf, "HVG_info.csv")
+
+# generate mean-variance plot
+plot_mean_variance(
+  object = object,
+  features = selected_features
+)
+object <- RunPCA(object, npcs = 30)
+
+# export top genes per PC
+export_top_pc_genes(object, reduction = "pca", top_n = 20, n_pcs = 30, file_name = "PCs_top-genes.csv")
+
+
+dims <- select_PCs(object,
+                   improved_diff_quantile = improved_diff_quantile)
+print(dims)
+
+# You can also choose PCs based on what you prefer, according to top genes per PC.
+# e.g. you think PC3, PC4 and PC5 represent unwanted noise.
+dims <- c(1:2, 5:10)
+```
+
+### UMAP and clustering
+```{r eval=FALSE, echo=TRUE}
+object <- RunUMAP(object, reduction = "pca", dims = dims, seed.use = 123)
+object <- clustering(object, 
+                     colors = colors, 
+                     k_range = seq(20, 50, 10), 
+                     resolution_range = seq(0.1, 0.4, 0.05), 
+                     dims = dims, 
+                     clusters_min = 6, 
+                     clusters_max = 9)
+
+# see what k and r combinations meet your expectation
+clusters <- grep("^k\\d+_r\\d+\\.\\d+$", colnames(object@meta.data), value = TRUE)
+print(clusters)
+
+for(temp_clusters in clusters){
+  Idents(object) <- temp_clusters
+  print(table(Idents(object)))
+
+  plots <- stacked_bar_plots(
+    object = object,
+    idents = temp_clusters,
+    layers = c("Time_point", "Cohort"),
+    layer_orders = list(
+      Time_point = c("Pre_Tx", "W4", "Post_Tx", "Normal")
+    ),
+    colors = colors,
+    title = "Cluster Distribution"
+  )
+  
+  n_layers <- object[[cluster_distribution_layers]] %>% unlist() %>% as.character %>% unique() %>% length()
+  width <- 5 + 0.3 * n_layers
+  
+  if(length(cluster_distribution_layers) == 3){
+    combined_3layer_plot <- combine_stacked_bars(plots)
+    ggsave(paste0(temp_clusters, "_barplot.png"), plot = combined_3layer_plot, width = width, height = 5.5, dpi = 300)
+  }else{
+    ggsave(paste0(temp_clusters, "_barplot.png"), plot = plots, width = width, height = 5.5, dpi = 300)
+  }
+  
+  # generate dotplot pdf and DGE
+  r <- dotplots_pdf(
+    object = object,
+    features = selected_features,
+    temp_clusters = temp_clusters
+  )
+
+  genes <- r$genes
+  
+  # visualize DGE by cell-level heatmap
+  heatmap_cell_level(object, features = genes, cluster = temp_clusters, colors)
+}
+```
+
+
+## Session Info
+
+```{r}
+sessionInfo()
+```
+
+## References
+
+- Seurat: https://satijalab.org/seurat/
+- BioYourOwnBowl: https://github.com/june-zhang-bioinfo/BioYourOwnBowl

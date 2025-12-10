@@ -1,0 +1,387 @@
+---
+title: "Customized Visualization"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Customized Visualization}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  dpi = 100,
+  fig.width = 5,
+  fig.height = 3,
+  warning = TRUE,
+  message = TRUE
+)
+```
+
+## Introduction
+
+**BioYourOwnBowl** provides a comprehensive pipeline for single-cell RNA-seq analysis using Seurat. This vignette demonstrates the main workflow using example data from article: https://pmc.ncbi.nlm.nih.gov/articles/PMC8376199/.The seurat object is downsampled and has metadata included.
+
+This vignette includes the advanced visualizations, e.g. :
+scaled feature plots, 
+violin plots (show bellies beyond zeros), 
+heatmaps in 3 levels (cell-level, pseudobulk level and meta level), 
+stacked bar plots, 
+splited dimplots, 
+classic volcano plots, 
+double volcano plots (show 2 volcanos at the same time), 
+box plots with paired dots (connect paired data point from one participant),
+venn plots showing DGE overlaps,
+treemaps showing TCR clonotype distribution in different timepoint per participant.
+
+The plots will always be displayed in your RStudio. If a file name is provided, it'll be saved as a png file at the same time.
+
+## Installation
+
+```{r eval=FALSE}
+# Install from GitHub
+remotes::install_github("june-zhang-bioinfo/BioYourOwnBowl")
+```
+
+## Load Libraries
+
+```{r eval=TRUE, echo=FALSE, error=TRUE, include=TRUE}
+library(BioYourOwnBowl)
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(circlize)
+library(grid)
+library(eulerr)
+library(RColorBrewer)
+library(treemap)
+library(stringr)
+library(grDevices)
+library(stats)
+library(utils)
+library(glue)
+library(jsonlite)
+library(Matrix)
+library(harmony)
+library(ComplexHeatmap)
+library(pheatmap)
+library(anndata)
+library(convert2anndata)
+library(scCustomize)
+library(rlang)
+library(matrixStats)
+library(sessioninfo)
+library(yaml)
+```
+
+## Prepare Example Data
+
+Load the processed object from the main pipeline.
+
+```{r eval=TRUE, echo=TRUE}
+data_dir_base <- system.file("extdata", package = "BioYourOwnBowl")
+data_path <- file.path(data_dir_base, "GSE178756_processed.rds")
+seurat_obj <- readRDS(data_path)
+seurat_obj
+```
+
+## Define Your Color Palette
+
+```{r eval=TRUE, echo=TRUE}
+colors <- c(
+  "#e6194B", 
+  "#86D3B2", 
+  "#5E8DBA", 
+  "#F7A131", 
+  "#911eb4", 
+  "#46f0f0", 
+  "#fabebe", 
+  "#bcf60c", 
+  "#B88C6D",
+  "#4d88e8", 
+  "#FFFB47", 
+  "#A1A74A",
+  "#7BB1A4", 
+  "#b15928",
+  "#C493D4", 
+  "#f58231",
+  "#0072B2",
+  "#D55E00", 
+  "#009E73",
+  "#CC79A7",
+  "#F0E442" 
+)
+```
+
+## Define Selected Features
+
+Provide specific genes of interest.
+
+```{r eval=TRUE, echo=TRUE}
+selected_features <- c(
+  "CD8A", "CD8B",
+  "CD3D", "CD3E", "CD3G",
+  "GZMB", "GZMA", "GZMH",
+  "PRF1", "NKG7", "GNLY",
+  "IL2RA", "TNFRSF9", "CD69",
+  "MKI67", "TOP2A",
+  "PDCD1", "LAG3", "TIGIT",
+  "CTLA4", "HAVCR2",
+  "CCR7", "SELL", "TCF7",
+  "LEF1", "IL7R"
+)
+```
+
+### Feature plots
+This function generates 2 feature plot, one has original scaling (all cells have color), one has customized scaling, controlled by argument `percentile`.  Only the cells having values beyond this `percentile` will have color. The higher the percentile, the more focused the feature plots.
+
+```{r eval=TRUE, include=TRUE, fig.height=4, fig.width=7}
+features_plots(
+  seurat_obj,
+  features = c("CD3D", "CD8A", "CD4"),
+  n_col = 3, 
+  percentile = 0.95
+)
+```
+
+### Violin plots
+This function generates violin plots with box plot and dots indicating the data distribution. The advantage is to see the bellies beyond the zeros, which seurat built-in violin plot function fails to do. It can also perform statistical tests and show the significance. `add_stats = T` will trigger the tests on all binary combinations, or you can indicates the comparison of interests.
+
+```{r eval=TRUE, include=TRUE, fig.height=4, fig.width=7}
+violin_plots(
+  seurat_obj,
+  features = c("CD3D", "CD8A", "CD4"),
+  idents = "seurat_clusters",
+  file_name = "expression_violins.png", binwidth = 0.05
+)
+# seurat violin
+Idents(seurat_obj) <- "seurat_clusters"
+VlnPlot(seurat_obj, features = c("CD3D", "CD8A", "CD4"), alpha = 0.1)
+# statistical test for all comparisons
+violin_plots(
+  object = seurat_obj,
+  features = c("CD3D", "CD8A", "CD4", "TOX", "TCF7"),
+  idents = "Time_point",
+  groups = c("Pre_Tx", "W4", "Normal"),
+  add_stats = TRUE,
+  test_method = "t.test",
+  binwidth = 0.05
+)
+# statistical test for specified comparisons
+my_comparisons <- list(
+  c("Pre_Tx", "W4"),
+  c("W4", "Normal")
+)
+
+violin_plots(
+  object = seurat_obj,
+  features = c("CD3D", "CD8A", "CD4", "TOX", "TCF7"),
+  idents = "Time_point",
+  groups = c("Pre_Tx", "W4", "Normal"),
+  add_stats = T,
+  comparisons = my_comparisons,
+  test_method = "wilcox",
+  binwidth = 0.05, colors = colors
+)
+```
+
+### Heatmap
+
+There are 3 types of heatmaps having different granularity: cell-level, pseudobulk-level and meta-level. 
+
+```{r eval=TRUE, include=TRUE, fig.height=5, fig.width=5}
+# cell level
+hm <- heatmap_cell_level(
+  seurat_obj,
+  features = selected_features,
+  idents = "seurat_clusters",
+  colors = colors,
+  fontsize = 6
+)
+ComplexHeatmap::draw(hm)
+# pseudobulk level
+heatmap_pseudobulk(object = seurat_obj, 
+                   features = selected_features, 
+                   groups = c("Pre_Tx", "W4", "Post_Tx", "Normal"),
+                   idents = "Time_point", 
+                   pseudobulk_column = "orig.ident")
+# meta level
+heatmap_meta(seurat_obj, features = selected_features, 
+             groups = c("Pre_Tx", "W4", "Post_Tx", "Normal"), 
+             idents = "Time_point")
+```
+
+
+### Stacked bar plots
+
+This function is versatile. You can use it to visualize the cluster distribution, or simply to check meta data. It can take up to 3 layers: the 1st layer represents the individual bar (the lowest level), the 2nd and 3rd are used to group the bars. You can specify the order of each layers (e.g. chronologically).
+
+Use `show_counts` = TRUE to see the cell counts per bar.
+
+For the best layout, when you input 3 layers, combine_stacked_bars() is required to combine them.
+```{r eval=TRUE, include=TRUE, fig.height=4, fig.width=5}
+# one layer
+stacked_bar_plots(
+  seurat_obj,
+  idents = "seurat_clusters",
+  layers = c("Cohort"),
+  colors = colors, 
+  show_counts = T
+)
+# two layers
+stacked_bar_plots(
+  seurat_obj,
+  idents = "Time_point",
+  layers = c("orig.ident", "Cohort"),
+  colors = colors
+)
+# three layers
+plot_list <- stacked_bar_plots(
+  seurat_obj,
+  idents = "seurat_clusters",
+  layers = c("orig.ident","Time_point", "Cohort"),
+  layer_orders = list(
+    orig.ident = str_sort(unique(seurat_obj$orig.ident)),
+    Time_point = c("Pre_Tx", "W4", "Post_Tx", "Normal"),
+    Cohort = c("HCV", "Healthy")
+    ),
+  colors = colors
+)
+
+combine_stacked_bars(plot_list = plot_list)
+```
+
+### Dimplot to check batch effect or status movement
+
+```{r eval=TRUE, include=TRUE, fig.height=7, fig.width=7}
+dimplots_split(seurat_obj, 
+               split_var = "orig.ident", 
+               group_var = "seurat_clusters", 
+               colors = colors)
+```
+
+### Volcano plots
+
+```{r eval=TRUE, include=TRUE, fig.width=5, fig.height=6, fig.retina=1}
+result <- volcano_plots(
+  object = seurat_obj,
+  idents = "Time_point",
+  ident1 = "Pre_Tx",
+  ident2 = "W4",
+  show_labels = selected_features,
+  title = "CD8 T cells"
+)
+result <- volcano_plots(
+  object = seurat_obj,
+  idents = "Time_point",
+  ident1 = "W4",
+  ident2 = "Post_Tx",
+  show_labels = T,
+  title = "CD8 T cells", log2fc_cutoff = 0.7, label_size = 3
+)
+```
+
+
+### Double volcano
+
+```{r eval=TRUE, include=TRUE, fig.width=6, fig.height=4, fig.retina=1.1}
+# create your comparison table
+df <- data.frame(ident1 = "W4", ident2 = "Pre_Tx", ident3 = "Pre_Tx", ident4 = "Post_Tx")
+
+Idents(seurat_obj) <- "Time_point"
+double_volcano(seurat_obj, 
+               df, 
+               output_dir = "/Users/zz005/Documents/github/R/2dim_log2fc",
+               lfc_threshold = log2(1.5), 
+               pval_cutoff = 0.05,
+               selected_genes = selected_features)
+```
+
+
+### Boxplot with paired dots
+
+Since there is no paired timepoints in any of the participant in this object, no dots are connected.
+```{r eval=TRUE, include=TRUE, fig.width=4, fig.height=4}
+boxplot_paired_points(seurat_obj, gene = "TOX", 
+                      timepoint_col = "Time_point", 
+                      participant_col = "orig.ident", 
+                      pre_label = "Pre_Tx", 
+                      post_label = "Post_Tx")
+```
+
+### Venn plots
+
+```{r}
+# Specify the comparisons of interest
+comparisons <- list(
+"Pre_Tx vs. W4" = c("Pre_Tx", "W4"),
+"Pre_Tx vs. Normal" = c("Pre_Tx", "Normal"),
+"W4 vs. Normal" = c("W4", "Normal")
+)
+
+# Make venn plot
+result <- venn_plots(
+  object = seurat_obj,
+  comparisons = comparisons,
+  idents = "Time_point",
+  log2fc_threshold = 0.58,
+  min_pct = 0.3,
+  main = "Upregulated Genes")
+
+```
+
+### Treemaps
+This dataset doesn't have TCR information, so we use simulated data for illustration purpose.
+
+```{r}
+n_cells <- 1500
+
+participants <- paste0("P", 1:3)
+epitopes <- c("Epitope1", "Epitope2", "Epitope3")
+
+meta <- data.frame(
+  participant = sample(participants, n_cells, replace = TRUE),
+  Specificity = sample(epitopes, n_cells, replace = TRUE, prob = c(0.5, 0.3, 0.2)),
+  raw_clonotype_id = sample(paste0("clono", 1:80), n_cells, replace = TRUE, prob = rexp(80, rate = 0.2)),
+  row.names = paste0("cell", 1:n_cells)
+)
+
+# Add some NA clonotypes for realism
+meta$raw_clonotype_id[sample(1:n_cells, 40)] <- NA
+
+# ---------------------------
+# Create minimal Seurat object
+# ---------------------------
+# Simulate counts matrix
+counts <- matrix(
+  rpois(n_cells * 300, lambda = 2),
+  nrow = 300,
+  ncol = n_cells,
+  dimnames = list(paste0("gene", 1:300), rownames(meta))
+)
+
+object <- CreateSeuratObject(counts = counts, meta.data = meta)
+
+
+tcr_treemaps(object, 
+             top_epitope = c("Epitope2", "Epitope3"), 
+             min_cells = 20, 
+             output_dir = getwd(), 
+             color_palette = colors)
+
+```
+
+
+## Session Info
+
+```{r}
+sessionInfo()
+```
+
+## References
+
+- Seurat: https://satijalab.org/seurat/
+- BioYourOwnBowl: https://github.com/june-zhang-bioinfo/BioYourOwnBowl

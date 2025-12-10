@@ -1,0 +1,7 @@
+url: https://github.com/june-zhang-bioinfo/BioYourOwnBowl
+template:
+  params:
+    bootswatch: flatly  # optional
+  includes:
+    after_body: inst/pkgdown/images.css
+
