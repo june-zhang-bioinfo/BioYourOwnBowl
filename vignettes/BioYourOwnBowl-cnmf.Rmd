@@ -1,0 +1,217 @@
+---
+title: "Consensus Non-negative Matrix Factorization (cNMF) Results Exploration"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Consensus Non-negative Matrix Factorization (cNMF) Results Exploration}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  dpi = 100,
+  fig.width = 5,
+  fig.height = 3,
+  warning = TRUE,
+  message = TRUE
+)
+```
+
+## Introduction
+
+**BioYourOwnBowl** provides a comprehensive pipeline for single-cell RNA-seq analysis using Seurat. This vignette demonstrates the main workflow using example data from article: https://pmc.ncbi.nlm.nih.gov/articles/PMC8376199/.The seurat object is downsampled and has metadata included.
+
+Consensus Non-negative Matrix Factorization is a widely used computational method designed to identify gene expression programs (GEPs) from single-cell RNA sequencing (scRNA-seq) data.
+
+Given the fact that running cNMF and generating density plot requires h5ad format, this vignette includes how to make h5ad format from seurat object and create density plot.
+
+This vignette provide comprehensive visualizations and data mining of cNMF results, including:
+- Bar plots of top genes per program
+- Feature plot on UMAP per program
+- Locate genes of interest per program (Are your favorite genes in the programs? Where are they sitting?)
+- Assign top programs per cell (Primary, Secondary, Tietary, etc) with cutoff
+- Visualize Primary usage based on meta data
+- Compare the similarity of cNMF (to self or siblings)
+
+
+## Installation
+
+```{r eval=FALSE}
+# Install from GitHub
+remotes::install_github("june-zhang-bioinfo/BioYourOwnBowl")
+```
+
+## Load Libraries
+
+```{r eval=TRUE, echo=FALSE, error=TRUE, include=TRUE}
+library(BioYourOwnBowl)
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(circlize)
+library(grid)
+library(eulerr)
+library(RColorBrewer)
+library(treemap)
+library(stringr)
+
+library(grDevices)
+library(stats)
+library(utils)
+library(glue)
+library(jsonlite)
+library(Matrix)
+library(harmony)
+library(ComplexHeatmap)
+library(pheatmap)
+library(anndata)
+library(convert2anndata)
+library(scCustomize)
+library(rlang)
+library(matrixStats)
+library(sessioninfo)
+library(yaml)
+```
+
+## Prepare Example Data
+
+Load the processed object from the main pipeline.
+
+```{r eval=TRUE, echo=TRUE, error=TRUE, include=TRUE}
+# Load processed seurat object
+data_dir_base <- system.file("extdata", package = "BioYourOwnBowl")
+# data_dir_base <- "/Users/zz005/Documents/github/R/example_data/"
+data_path <- file.path(data_dir_base, "GSE178756_processed.rds")
+seurat_obj <- readRDS(data_path)
+seurat_obj
+
+cnmf_path <- file.path(data_dir_base, "cnmf_k12")
+```
+
+## Define Color Palette
+
+```{r eval=TRUE, echo=TRUE, error=TRUE, include=TRUE}
+colors <- RColorBrewer::brewer.pal(12, "Set3")
+```
+
+## Define Selected Features
+
+You can provide specific genes of interest to highlight in visualizations:
+
+```{r eval=TRUE, echo=TRUE, error=TRUE, include=TRUE}
+selected_features <- c(
+  "CD8A", "CD8B",
+  "CD3D", "CD3E", "CD3G",
+  "GZMB", "GZMA", "GZMH",
+  "PRF1", "NKG7", "GNLY",
+  "IL2RA", "TNFRSF9", "CD69",
+  "MKI67", "TOP2A",
+  "PDCD1", "LAG3", "TIGIT",
+  "CTLA4", "HAVCR2",
+  "CCR7", "SELL", "TCF7",
+  "LEF1", "IL7R"
+)
+```
+
+### Prepare h5ad file to run cNMF and density plot (scanpy)
+
+```{r eval=FALSE, echo=TRUE, error=TRUE, include=TRUE}
+# to use reticulate, you need to initialize your virtual environment
+library(reticulate)
+BioYourOwnBowl::setup_python()
+```
+
+
+```{r eval=FALSE, echo=TRUE, error=TRUE, include=TRUE}
+prepare_h5ad(object = seurat_obj, features = VariableFeatures(seurat_obj), metadata_vars = c("Cohort", "Time_point"), file_name = "example.h5ad")
+
+py_code <- density_plot(file_name = "example.h5ad", density_specs = list(
+   Cohort = list(order = c("HCV", "Healthy")),
+   Time_point = list(order = c("Pre_Tx", "W4", "Post_Tx", "Normal"))))
+```
+
+### Visualize top genes per program
+
+`highlight_genes` can be turned off. `show_metrics` can be turned on if you are interested in the median expression of genes.
+
+```{r eval=TRUE, echo=TRUE, error=TRUE, include=TRUE}
+r <- cnmf_bar_plots(
+         cnmf_path,
+         seurat_obj,
+         top_n = 30,
+         highlight_genes = selected_features,
+         output_dir = "/Users/zz005/Documents/github/R/vignettes3_results",
+         show_metrics = F)
+r$top_df
+```
+
+### Get ranks of genes of interest
+
+```{r eval=TRUE, echo=TRUE, error=TRUE, include=TRUE}
+ranks <- cnmf_gene_ranks(
+    dir_path = cnmf_path,
+    features = c("TOX", "PDCD1", "SELL", "IKZF2", "BACH2", "ENTPD1", "ETV1")
+)
+ranks
+```
+
+### Project cNMF programs on UMAP
+
+```{r eval=TRUE, echo=TRUE, error=TRUE, include=TRUE}
+cnmf_umaps(object = seurat_obj, 
+           dir_path = cnmf_path, 
+           output_dir = "/Users/zz005/Documents/github/R/vignettes3_results")
+```
+
+### Assign top programs to cells (Primary, Secondary, Tietiary, Quaternary)
+
+```{r eval=TRUE, echo=TRUE, error=TRUE, include=TRUE}
+r <- cnmf_top_programs(seurat_obj, cnmf_path, cutoff = 0)
+
+seurat_obj <- r$object
+df <- r$cell_by_pro # used for sankey plot
+```
+
+### compare_cnmf_programs
+
+```{r eval=TRUE, echo=TRUE, error=TRUE, include=TRUE, fig.width=4}
+compare_cnmf_programs(
+    dir1 = cnmf_path,
+    dir2 = cnmf_path,
+    object = seurat_obj,
+    top_n = 30,
+    label1 = "k12",
+    label2 = "k12",
+    heatmap_title = "",
+    vf_only = F
+)
+
+```
+
+### stacked_bar_plots
+
+```{r eval=TRUE, echo=TRUE, error=TRUE, include=TRUE, fig.height=4, fig.width=6}
+stacked_bar_plots(
+  object = seurat_obj,
+  idents = "Primary",
+  layers = c("seurat_clusters", "Cohort"),
+  layer_orders = list(Cohort = c("HCV", "Healthy")),
+  colors = rep(colors, 2),
+  title = "cNMF", show_counts = T
+)
+```
+
+## Session Info
+
+```{r eval=TRUE, echo=TRUE, error=TRUE, include=TRUE}
+sessionInfo()
+```
+
+## References
+
+- Seurat: https://satijalab.org/seurat/
+- BioYourOwnBowl: https://github.com/june-zhang-bioinfo/BioYourOwnBowl
