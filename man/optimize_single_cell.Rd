@@ -26,6 +26,7 @@ optimize_single_cell(
   regress.out = NULL,
   clusters_min = 4,
   clusters_max = 13,
+  min.pct = 0.3,
   lower_bound_param = 1,
   higher_bound_param = 2,
   cluster_distribution_layers = NULL,
@@ -77,6 +78,8 @@ optimize_single_cell(
 \item{clusters_min}{Minimum number of clusters expected. Default is 4.}
 
 \item{clusters_max}{Maximum number of clusters expected. Default is 13.}
+
+\item{min.pct}{Minimum percentage expressed required for a gene to become DEG. Default is 0.3.}
 
 \item{lower_bound_param}{Lower bound parameter for low-quality cluster removal. To be more stringent, decrease this parameter. Default is 1.}
 

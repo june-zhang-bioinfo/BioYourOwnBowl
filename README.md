@@ -15,7 +15,9 @@ clustering and comprehensive visualizations to support evaluation. The
 workflow is modular: each function can be used independently, allowing
 users to assemble and customize their own analysis pipeline.
 
-<img src="man/figures/readme.png" width="70%"/>
+<p style="margin-top: 2em;">
+<img src="man/figures/readme.png" width="50%"/>
+</p>
 
 ## Installation
 
@@ -31,6 +33,8 @@ remotes::install_github("june-zhang-bioinfo/BioYourOwnBowl")
 
 - **End-to-end analysis**: define your parameters at once and get all
   results with one function.
+- **Save parameters and session info automatically**: record how you get
+  here.
 - **Automated function**: low-quality cluster removal, select principal
   components by elbow plot.
 - **Flexible variable feature selection**: vst, dispersion, pseudobulk,
@@ -41,7 +45,7 @@ remotes::install_github("june-zhang-bioinfo/BioYourOwnBowl")
   meta-level heatmaps, 2-dimensional volcano plots, density plot with
   scanpy, violin plots with pronounced non-zero distribution and
   statistical test, area proportional venn plots and treemaps.
-- **Interaction with Python**: configurate python environment and run
+- **Interacte with Python**: configurate python environment and run
   python in Rstudio.
 - **cNMF visualization**: top genes per program, programs projection on
   UMAP, cNMF comparison heatmaps, gene locating.
@@ -63,21 +67,15 @@ library(tidyr)
 library(tibble)
 library(circlize)
 library(grid)
-library(eulerr)
 library(RColorBrewer)
-library(treemap)
 library(stringr)
 library(grDevices)
 library(stats)
 library(utils)
-library(glue)
 library(jsonlite)
 library(Matrix)
-library(harmony)
 library(ComplexHeatmap)
 library(pheatmap)
-library(anndata)
-library(convert2anndata)
 library(scCustomize)
 library(rlang)
 library(matrixStats)

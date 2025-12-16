@@ -21,7 +21,7 @@ export_top_pc_genes(
 
 \item{n_pcs}{Integer; number of PCs to consider (default 30)}
 
-\item{file_name}{Character; CSV file to save results (default "PCs_top-genes.csv")}
+\item{file_name}{Character; csv file to save results (default "PCs_top-genes.csv")}
 }
 \value{
 A data.frame of top genes per PC (invisible)

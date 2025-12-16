@@ -31,7 +31,7 @@ ranked by score. Default is 25.}
 \item{adj_p_cutoff}{Numeric value specifying the statistical significance cutoff.}
 
 \item{log2fc_cutoff}{Numeric value specifying the minimum absolute log2 fold change
-threshold. Default is 0 (no cutoff beyond direction).}
+threshold. Default is 0.}
 }
 \value{
 A tibble containing the selected genes with columns:
@@ -49,7 +49,7 @@ using a scoring system that combines statistical significance (\code{p_val_adj})
 effect size (\code{avg_log2FC}). It can take results from both \code{FindAllMarkers} (> 2 groups) and \code{FindMarkers} (2 groups).
 }
 \details{
-In the case of \code{FindMarkers}, \code{direction} doesn't take effect. Please make sure you add \code{cluster} column in the input.
+If using results from \code{FindMarkers}, \code{direction} doesn't take effect. Please make sure you add \code{cluster} column indicating the group name in the input.
 
 The function computes a composite score for each gene as:
 \deqn{score = -log10(p\_val\_adj) * |avg\_log2FC|}

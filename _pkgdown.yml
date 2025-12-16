@@ -1,3 +1,7 @@
+development:
+  mode: auto
+home:
+  strip_header: true
 url: https://github.com/june-zhang-bioinfo/BioYourOwnBowl
 template:
   params:

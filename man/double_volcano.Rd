@@ -54,7 +54,7 @@ and once for (\code{ident3} vs. \code{ident4}).
 \item Merges results by gene.
 \item Assigns each gene to a color group based on the direction and significance
 of both comparisons.
-\item Plots \eqn{avg_log2FC_1} vs. \eqn{avg_log2FC_2} with color-coded points,
+\item Plots \code{avg_log2FC_1} vs. \code{avg_log2FC_2} with color-coded points,
 significance thresholds, and labeled selected genes.
 \item Saves the resulting plot as a PNG file.
 }

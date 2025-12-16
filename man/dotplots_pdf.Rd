@@ -4,16 +4,16 @@
 \alias{dotplots_pdf}
 \title{Generate DotPlot PDFs for a Seurat Object}
 \usage{
-dotplots_pdf(object, features, temp_clusters, min_pct = 0.3)
+dotplots_pdf(object, features.1, features.2, file_name = "dotplot.pdf")
 }
 \arguments{
 \item{object}{A Seurat object.}
 
-\item{features}{A character vector of feature names to include in the first DotPlot.}
+\item{features.1}{A character vector of feature names to include in the first DotPlot.}
 
-\item{temp_clusters}{A string giving the output filename prefix (PDF will be saved as \verb{<temp_clusters>.pdf}).}
+\item{features.2}{A character vector of feature names to include in the second DotPlot.}
 
-\item{min_pct}{Minimum fraction of cells expressing a gene for it to be considered in \code{FindAllMarkers()} (default = 0.3).}
+\item{file_name}{A string giving the output pdf filename (\code{dotplot.pdf}).}
 }
 \value{
 A list containing:
@@ -30,7 +30,8 @@ by \code{FindAllMarkers()} and selected with \code{select_marker_genes_score()}.
 \examples{
 \dontrun{
 dotplots_pdf(object = seurat_obj,
-                     features = c("GeneA", "GeneB"),
-                     temp_clusters = "Cluster_DotPlots")
+                     features.1 = c("GeneA", "GeneB"),
+                     features.2 = c("GeneC", "GeneD"),
+                     file_name = "dotplot.pdf")
 }
 }

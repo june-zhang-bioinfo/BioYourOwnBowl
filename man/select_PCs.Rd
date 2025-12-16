@@ -7,7 +7,7 @@
 select_PCs(object, improved_diff_quantile = 0.6)
 }
 \arguments{
-\item{object}{A Seurat object with PCA computed}
+\item{object}{A Seurat object.}
 
 \item{improved_diff_quantile}{Quantile threshold for changes in variance
 explained. Lower values select more PCs. Default is 0.6.}

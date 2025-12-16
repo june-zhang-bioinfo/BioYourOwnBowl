@@ -33,6 +33,6 @@ preprocess_obj(
 A Seurat object processed according to the chosen variable feature method.
 }
 \description{
-This function normalizes, selects variable features, and scales a Seurat object
+This function normalizes, selects variable features, and scales a Seurat object.
 based on the chosen variable feature method and scaling method.
 }

@@ -39,6 +39,7 @@ filter_genes_by_expression <- function(object, gene_filter = 50, assay = "RNA") 
 #' @param object A Seurat object.
 #' @param split.by Character string specifying the metadata column to split by.
 #'   Default is "Patient"
+#' @param selection.method Variable feature selection method for individual object. Default is "vst".
 #' @param nfeatures Number of features to use as integration anchors. Default
 #'   uses the function parameter nfeatures
 #'
@@ -50,14 +51,14 @@ filter_genes_by_expression <- function(object, gene_filter = 50, assay = "RNA") 
 #' }
 #'
 #' @export
-anchor_features <- function(object, split.by = "Patient", nfeatures = 2000){
+anchor_features <- function(object, split.by = "Patient", nfeatures = 2000, selection.method = "vst"){
   
   object <- NormalizeData(object)
   patient.list <- SplitObject(object, split.by = split.by)
   
   for (i in 1:length(patient.list)) {
     patient.list[[i]] <- NormalizeData(patient.list[[i]], verbose = FALSE)
-    patient.list[[i]] <- FindVariableFeatures(patient.list[[i]], selection.method = "dispersion", nfeatures = 2000, verbose = FALSE)
+    patient.list[[i]] <- FindVariableFeatures(patient.list[[i]], selection.method = selection.method, nfeatures = 2000, verbose = FALSE)
   }
   patient.list <- patient.list[sapply(patient.list, function(x) ncol(x) > 30)]
   anchors <- FindIntegrationAnchors(object.list = patient.list, anchor.features = nfeatures)
@@ -70,7 +71,7 @@ anchor_features <- function(object, split.by = "Patient", nfeatures = 2000){
 
 #' Preprocess Seurat Object.
 #'
-#' This function normalizes, selects variable features, and scales a Seurat object
+#' This function normalizes, selects variable features, and scales a Seurat object.
 #' based on the chosen variable feature method and scaling method.
 #'
 #' @param object A Seurat object.
@@ -137,7 +138,7 @@ preprocess_obj <- function(object,
 #' and selects the optimal number of PCs based on changes in variance explained.
 #' It also generates an elbow plot with a red line indicating the selected PCs.
 #'
-#' @param object A Seurat object with PCA computed
+#' @param object A Seurat object.
 #' @param improved_diff_quantile Quantile threshold for changes in variance
 #' explained. Lower values select more PCs. Default is 0.6.
 #'
@@ -298,7 +299,7 @@ plot_mean_variance <- function(object, features = NULL,
 #' @param reduction Character; name of the dimensional reduction (default "pca")
 #' @param top_n Integer; number of top positive/negative genes per PC (default 20)
 #' @param n_pcs Integer; number of PCs to consider (default 30)
-#' @param file_name Character; CSV file to save results (default "PCs_top-genes.csv")
+#' @param file_name Character; csv file to save results (default "PCs_top-genes.csv")
 #' @return A data.frame of top genes per PC (invisible)
 #' @export
 export_top_pc_genes <- function(object,
@@ -344,7 +345,7 @@ export_top_pc_genes <- function(object,
 #' using a scoring system that combines statistical significance (`p_val_adj`) and
 #' effect size (`avg_log2FC`). It can take results from both `FindAllMarkers` (> 2 groups) and `FindMarkers` (2 groups).
 #' 
-#' In the case of `FindMarkers`, `direction` doesn't take effect. Please make sure you add `cluster` column in the input.
+#' If using results from `FindMarkers`, `direction` doesn't take effect. Please make sure you add `cluster` column indicating the group name in the input.
 #'
 #' @param markers A data frame or tibble containing marker gene statistics.
 #'   Must include the following columns:
@@ -360,7 +361,7 @@ export_top_pc_genes <- function(object,
 #'   (`"up"`) or downregulated (`"down"`) genes. Default is `"up"`.
 #' @param adj_p_cutoff Numeric value specifying the statistical significance cutoff.
 #' @param log2fc_cutoff Numeric value specifying the minimum absolute log2 fold change
-#'   threshold. Default is 0 (no cutoff beyond direction).
+#'   threshold. Default is 0.
 #'
 #' @details
 #' The function computes a composite score for each gene as:
@@ -424,6 +425,8 @@ select_marker_genes_score <- function(markers,
     distinct(gene, cluster, .keep_all = TRUE) %>%
     arrange(cluster, desc(score)) %>%
     as.data.frame()
+  
+  return(top_features)
 }
 
 
@@ -488,9 +491,9 @@ dotplots_png <- function(
 #' by `FindAllMarkers()` and selected with `select_marker_genes_score()`.
 #'
 #' @param object A Seurat object.
-#' @param features A character vector of feature names to include in the first DotPlot.
-#' @param temp_clusters A string giving the output filename prefix (PDF will be saved as `<temp_clusters>.pdf`).
-#' @param min_pct Minimum fraction of cells expressing a gene for it to be considered in `FindAllMarkers()` (default = 0.3).
+#' @param features.1 A character vector of feature names to include in the first DotPlot.
+#' @param features.2 A character vector of feature names to include in the second DotPlot.
+#' @param file_name A string giving the output pdf filename (`dotplot.pdf`).
 #'
 #' @return A list containing:
 #' \describe{
@@ -501,56 +504,46 @@ dotplots_png <- function(
 #' @examples
 #' \dontrun{
 #' dotplots_pdf(object = seurat_obj,
-#'                      features = c("GeneA", "GeneB"),
-#'                      temp_clusters = "Cluster_DotPlots")
+#'                      features.1 = c("GeneA", "GeneB"),
+#'                      features.2 = c("GeneC", "GeneD"),
+#'                      file_name = "dotplot.pdf")
 #' }
 #' @export
-dotplots_pdf <- function(object, features, temp_clusters, min_pct = 0.3) {
+dotplots_pdf <- function(object, features.1, features.2, file_name = "dotplot.pdf") {
   
   if (!inherits(object, "Seurat"))
     stop("object must be a Seurat object")
   
-  if (!is.character(features) || length(features) == 0)
-    stop("features must be a non-empty character vector")
+  if (!is.character(features.1) || length(features.1) == 0)
+    stop("feature.1 must be a non-empty character vector")
   
-  if (!all(features %in% rownames(object)))
-    warning("Some features are not in the Seurat object")
-  
-  if (!is.character(temp_clusters) || length(temp_clusters) != 1)
-    stop("temp_clusters must be a single string")
-  
-  if (!is.numeric(min_pct) || min_pct < 0 || min_pct > 1)
-    stop("min_pct must be between 0 and 1")
-  
-  # Find markers and select top features
-  markers <- FindAllMarkers(object, min.pct = min_pct)
-  genes <- select_marker_genes_score(markers)
+  if (!is.character(features.2) || length(features.2) == 0)
+    stop("feature.2 must be a non-empty character vector")
   
   pdf(
-    paste0(temp_clusters, "_dotplot.pdf"),
+    file_name,
     width = length(unique(Idents(object))) * 5.7,
     height = length(unique(Idents(object))) * 0.6
   )
 
   # First dot plot
   print(
-    DotPlot(object, features = features) +
+    DotPlot(object, features = features.1) +
       RotatedAxis() +
       scale_colour_gradient2(low = "#0024d6", mid = "#b4b6bf", high = "#d91111")
   )
 
   # Second dot plot
   print(
-    DotPlot(object, features = unique(genes$gene)) +
+    DotPlot(object, features = unique(features.2)) +
       RotatedAxis() +
       scale_colour_gradient2(low = "#0024d6", mid = "#b4b6bf", high = "#d91111")
   )
 
   dev.off()
 
-  head(genes)
-  # Return both results for use later
-  return(list(markers = markers, genes = genes))
+  # head(genes)
+  # return(list(markers = markers, genes = genes))
 }
 
 
@@ -631,7 +624,7 @@ remove_low_quality_clusters <- function(object,
 #' @param clusters_max Maximum acceptable number of clusters for a valid result.
 #'   Defaults to a user-specified value.
 #' @param colors Optional vector of colors for clusters in plots.
-#' @param output_file PDF file name to save all DimPlots. Default: "dimplot.pdf".
+#' @param file_name PDF file name to save all DimPlots. Default: "dimplot.pdf".
 #'
 #' @details
 #' For each combination of `k.param` and `resolution`, the function runs:
@@ -671,14 +664,14 @@ clustering <- function(
     clusters_min = 5,
     clusters_max = 8,
     colors = NULL,
-    output_file = "dimplot.pdf"
+    file_name = "dimplot.pdf"
 ) {
   if (!inherits(object, "Seurat")) stop("Input must be a Seurat object.")
   if (missing(k_range) || missing(resolution_range) || missing(dims)) {
     stop("Please provide `k_range`, `resolution_range`, and `dims`.")
   }
 
-  pdf(output_file, width = 4, height = 4)
+  pdf(file_name, width = 4, height = 4)
   on.exit(dev.off(), add = TRUE)
 
   for (k in k_range) {
@@ -723,7 +716,7 @@ clustering <- function(
     }
   }
 
-  message("All clustering tests completed. Results saved to ", output_file)
+  message("All clustering tests completed. Results saved to ", file_name)
   return(object)
 }
 
@@ -1236,6 +1229,7 @@ combine_stacked_bars <- function(plot_list, layer_order = NULL) {
 #' @param regress.out Variables to regress out during scaling, e.g. proliterating genes. Default is NULL.
 #' @param clusters_min Minimum number of clusters expected. Default is 4.
 #' @param clusters_max Maximum number of clusters expected. Default is 13.
+#' @param min.pct Minimum percentage expressed required for a gene to become DEG. Default is 0.3.
 #' @param lower_bound_param Lower bound parameter for low-quality cluster removal. To be more stringent, decrease this parameter. Default is 1.
 #' @param higher_bound_param Upper bound parameter for low-quality cluster removal. To be more stringent, increase this parameter. Default is 2.
 #' @param cluster_distribution_layers Character vector of metadata columns for cluster distribution plots. Default is NULL.
@@ -1310,6 +1304,7 @@ optimize_single_cell <- function(object = NULL,
                                  regress.out = NULL,
                                  clusters_min = 4,
                                  clusters_max = 13,
+                                 min.pct = 0.3,
                                  lower_bound_param = 1,
                                  higher_bound_param = 2,
                                  cluster_distribution_layers = NULL,
@@ -1491,19 +1486,19 @@ optimize_single_cell <- function(object = NULL,
         ggsave(paste0(temp_clusters, "_barplot.png"), plot = plots, width = width, height = 5.5, dpi = 300)
       }
     }
+    
+    markers <- FindAllMarkers(object, min.pct = min.pct)
+    dge <- select_marker_genes_score(markers)
 
-    r <- dotplots_pdf(
+    dotplots_pdf(
       object = object,
-      features = features,
-      temp_clusters = temp_clusters
+      features.1 = features,
+      features.2 = dge$gene,
+      file_name = paste0(temp_clusters, "_dotplot.pdf")
     )
 
-    genes <- r$genes
-    
-    head(genes)
-
     heatmap_cell_level(object, 
-                       features = genes, 
+                       features = dge$gene, 
                        idents = temp_clusters, 
                        colors, 
                        file_name = paste0(temp_clusters, "_heatmap.png"))

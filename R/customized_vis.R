@@ -813,7 +813,7 @@ volcano_plots <- function(object,
 #'   \item Merges results by gene.
 #'   \item Assigns each gene to a color group based on the direction and significance
 #'         of both comparisons.
-#'   \item Plots \eqn{avg_log2FC_1} vs. \eqn{avg_log2FC_2} with color-coded points,
+#'   \item Plots \code{avg_log2FC_1} vs. \code{avg_log2FC_2} with color-coded points,
 #'         significance thresholds, and labeled selected genes.
 #'   \item Saves the resulting plot as a PNG file.
 #' }
@@ -931,7 +931,7 @@ double_volcano <- function(
       ggplot2::geom_hline(yintercept = c(-lfc_threshold, lfc_threshold),
                           linetype = "dashed", color = "gray50") +
       ggplot2::scale_color_manual(values = color_palette) +
-      ggplot2::labs(x = c1, y = c2, title = "Conserved Log2FC", color = "Group") +
+      ggplot2::labs(x = c1, y = c2, title = "Log2FC", color = "Group") +
       ggplot2::theme_classic() +
       ggplot2::theme(plot.title = ggplot2::element_text(face = "bold")) +
       ggrepel::geom_text_repel(

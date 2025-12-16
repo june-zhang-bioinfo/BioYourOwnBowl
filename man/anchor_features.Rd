@@ -4,7 +4,12 @@
 \alias{anchor_features}
 \title{Find integration anchors and set variable features}
 \usage{
-anchor_features(object, split.by = "Patient", nfeatures = 2000)
+anchor_features(
+  object,
+  split.by = "Patient",
+  nfeatures = 2000,
+  selection.method = "vst"
+)
 }
 \arguments{
 \item{object}{A Seurat object.}
@@ -14,6 +19,8 @@ Default is "Patient"}
 
 \item{nfeatures}{Number of features to use as integration anchors. Default
 uses the function parameter nfeatures}
+
+\item{selection.method}{Variable feature selection method for individual object. Default is "vst".}
 }
 \value{
 A Seurat object with anchor features set as variable features

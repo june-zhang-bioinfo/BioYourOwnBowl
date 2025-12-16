@@ -13,7 +13,7 @@ clustering(
   clusters_min = 5,
   clusters_max = 8,
   colors = NULL,
-  output_file = "dimplot.pdf"
+  file_name = "dimplot.pdf"
 )
 }
 \arguments{
@@ -37,7 +37,7 @@ Defaults to a user-specified value.}
 
 \item{colors}{Optional vector of colors for clusters in plots.}
 
-\item{output_file}{PDF file name to save all DimPlots. Default: "dimplot.pdf".}
+\item{file_name}{PDF file name to save all DimPlots. Default: "dimplot.pdf".}
 }
 \value{
 A Seurat object with additional metadata columns for each valid clustering.
