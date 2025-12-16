@@ -6,7 +6,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Getting Started with BioYourOwnBowl • BioYourOwnBowl</title>
-<!-- jquery --><script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script><!-- Bootstrap --><link href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.4.0/flatly/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
+<!-- jquery --><script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script><!-- Bootstrap --><link href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.4.0/journal/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.4.1/js/bootstrap.min.js" integrity="sha256-nuL8/2cJ5NDSSwnKD8VqreErSWHtnEP9E7AySL+1ev4=" crossorigin="anonymous"></script><!-- bootstrap-toc --><link rel="stylesheet" href="../bootstrap-toc.css">
 <script src="../bootstrap-toc.js"></script><!-- Font Awesome icons --><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.12.1/css/all.min.css" integrity="sha256-mmgLkCYLUQbXn0B1SRqzHar6dCnv9oZFPEC1g1cwlkk=" crossorigin="anonymous">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.12.1/css/v4-shims.min.css" integrity="sha256-wZjR52fzng1pJHwx4aV2AO3yyTOXrcDW7jBpJtTwVxw=" crossorigin="anonymous">
@@ -96,11 +96,9 @@
 <p><strong>BioYourOwnBowl</strong> provides a comprehensive pipeline for
 single-cell RNA-seq analysis using Seurat. This vignette demonstrates
 the main workflow using example data from article: <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC8376199/" class="external-link uri">https://pmc.ncbi.nlm.nih.gov/articles/PMC8376199/</a>. To
-maximize the efficiency, this object is downsampled and has metadata
+maximize the efficiency, this object is down-sampled and has metadata
 included.</p>
-<p>[placeholder: pipeline visualization? and explanation?] [placeholder:
-what is cluster-based cell qc and why, why iterate different k and r
-combinations, why selected features (prior knowledge)]</p>
+<p>The results from this notebook can be found in <a href="https://github.com/june-zhang-bioinfo/BioYourOwnBowl/tree/main/vignettes/main_workflow" class="uri">https://github.com/june-zhang-bioinfo/BioYourOwnBowl/tree/main/vignettes/main_workflow</a>.</p>
 </div>
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
@@ -332,8 +330,8 @@ comprehensive single-cell analysis:</p>
 <span><span class="op">)</span></span>
 <span><span class="co">#&gt; Warning in dir.create(out_dir):</span></span>
 <span><span class="co">#&gt; '/Users/zz005/Documents/github/R/vignettes_results' already exists</span></span>
-<span><span class="co">#&gt; parameters saved to logs/params_20251215_193658.yaml</span></span>
-<span><span class="co">#&gt; Session info saved to logs/session_info_20251215_193658.txt</span></span>
+<span><span class="co">#&gt; parameters saved to logs/params_20251216_162836.yaml</span></span>
+<span><span class="co">#&gt; Session info saved to logs/session_info_20251216_162836.txt</span></span>
 <span><span class="co">#&gt; Gene filtering done.</span></span>
 <span><span class="co">#&gt; Normalizing layer: counts</span></span>
 <span><span class="co">#&gt; Finding variable features for layer counts</span></span>
@@ -342,21 +340,21 @@ comprehensive single-cell analysis:</p>
 <span><span class="co">#&gt; Warning: The default method for RunUMAP has changed from calling Python UMAP via reticulate to the R-native UWOT using the cosine metric</span></span>
 <span><span class="co">#&gt; To use Python UMAP via reticulate, set umap.method to 'umap-learn' and metric to 'correlation'</span></span>
 <span><span class="co">#&gt; This message will be shown once per session</span></span>
-<span><span class="co">#&gt; 19:37:08 UMAP embedding parameters a = 0.9922 b = 1.112</span></span>
-<span><span class="co">#&gt; 19:37:08 Read 10000 rows and found 30 numeric columns</span></span>
-<span><span class="co">#&gt; 19:37:08 Using Annoy for neighbor search, n_neighbors = 30</span></span>
-<span><span class="co">#&gt; 19:37:08 Building Annoy index with metric = cosine, n_trees = 50</span></span>
+<span><span class="co">#&gt; 16:28:46 UMAP embedding parameters a = 0.9922 b = 1.112</span></span>
+<span><span class="co">#&gt; 16:28:46 Read 10000 rows and found 30 numeric columns</span></span>
+<span><span class="co">#&gt; 16:28:46 Using Annoy for neighbor search, n_neighbors = 30</span></span>
+<span><span class="co">#&gt; 16:28:46 Building Annoy index with metric = cosine, n_trees = 50</span></span>
 <span><span class="co">#&gt; 0%   10   20   30   40   50   60   70   80   90   100%</span></span>
 <span><span class="co">#&gt; [----|----|----|----|----|----|----|----|----|----|</span></span>
 <span><span class="co">#&gt; **************************************************|</span></span>
-<span><span class="co">#&gt; 19:37:09 Writing NN index file to temp file /var/folders/tw/783hgvc55jv1b7mqflwpjc7h0000gp/T//Rtmplg9Uma/file1e53634aabe5</span></span>
-<span><span class="co">#&gt; 19:37:09 Searching Annoy index using 1 thread, search_k = 3000</span></span>
-<span><span class="co">#&gt; 19:37:10 Annoy recall = 100%</span></span>
-<span><span class="co">#&gt; 19:37:10 Commencing smooth kNN distance calibration using 1 thread with target n_neighbors = 30</span></span>
-<span><span class="co">#&gt; 19:37:11 Initializing from normalized Laplacian + noise (using RSpectra)</span></span>
-<span><span class="co">#&gt; 19:37:11 Commencing optimization for 500 epochs, with 470206 positive edges</span></span>
-<span><span class="co">#&gt; 19:37:11 Using rng type: pcg</span></span>
-<span><span class="co">#&gt; 19:37:20 Optimization finished</span></span>
+<span><span class="co">#&gt; 16:28:46 Writing NN index file to temp file /var/folders/tw/783hgvc55jv1b7mqflwpjc7h0000gp/T//RtmpSm6IMd/file1246e65789bed</span></span>
+<span><span class="co">#&gt; 16:28:46 Searching Annoy index using 1 thread, search_k = 3000</span></span>
+<span><span class="co">#&gt; 16:28:48 Annoy recall = 100%</span></span>
+<span><span class="co">#&gt; 16:28:48 Commencing smooth kNN distance calibration using 1 thread with target n_neighbors = 30</span></span>
+<span><span class="co">#&gt; 16:28:48 Initializing from normalized Laplacian + noise (using RSpectra)</span></span>
+<span><span class="co">#&gt; 16:28:49 Commencing optimization for 500 epochs, with 470206 positive edges</span></span>
+<span><span class="co">#&gt; 16:28:49 Using rng type: pcg</span></span>
+<span><span class="co">#&gt; 16:28:58 Optimization finished</span></span>
 <span><span class="co">#&gt; Computing nearest neighbor graph</span></span>
 <span><span class="co">#&gt; Computing SNN</span></span>
 <span><span class="co">#&gt; Modularity Optimizer version 1.3.0 by Ludo Waltman and Nees Jan van Eck</span></span>
@@ -433,21 +431,21 @@ comprehensive single-cell analysis:</p>
 <span><span class="co">#&gt; Elbow plot saved to /Users/zz005/Documents/github/R/vignettes_results/elbow.png</span></span></code></pre></div>
 <p><img src="BioYourOwnBowl-main_files/figure-html/unnamed-chunk-6-1.png" class="r-plt" width="500"></p>
 <pre><code><span><span class="co">#&gt;  [1]  1  2  3  4  5  6  7  8  9 10 11 12 13 14</span></span>
-<span><span class="co">#&gt; 19:37:30 UMAP embedding parameters a = 0.9922 b = 1.112</span></span>
-<span><span class="co">#&gt; 19:37:30 Read 5893 rows and found 14 numeric columns</span></span>
-<span><span class="co">#&gt; 19:37:30 Using Annoy for neighbor search, n_neighbors = 30</span></span>
-<span><span class="co">#&gt; 19:37:30 Building Annoy index with metric = cosine, n_trees = 50</span></span>
+<span><span class="co">#&gt; 16:29:08 UMAP embedding parameters a = 0.9922 b = 1.112</span></span>
+<span><span class="co">#&gt; 16:29:08 Read 5893 rows and found 14 numeric columns</span></span>
+<span><span class="co">#&gt; 16:29:08 Using Annoy for neighbor search, n_neighbors = 30</span></span>
+<span><span class="co">#&gt; 16:29:08 Building Annoy index with metric = cosine, n_trees = 50</span></span>
 <span><span class="co">#&gt; 0%   10   20   30   40   50   60   70   80   90   100%</span></span>
 <span><span class="co">#&gt; [----|----|----|----|----|----|----|----|----|----|</span></span>
 <span><span class="co">#&gt; **************************************************|</span></span>
-<span><span class="co">#&gt; 19:37:30 Writing NN index file to temp file /var/folders/tw/783hgvc55jv1b7mqflwpjc7h0000gp/T//Rtmplg9Uma/file1e5351d2f3b8</span></span>
-<span><span class="co">#&gt; 19:37:30 Searching Annoy index using 1 thread, search_k = 3000</span></span>
-<span><span class="co">#&gt; 19:37:31 Annoy recall = 100%</span></span>
-<span><span class="co">#&gt; 19:37:31 Commencing smooth kNN distance calibration using 1 thread with target n_neighbors = 30</span></span>
-<span><span class="co">#&gt; 19:37:32 Initializing from normalized Laplacian + noise (using RSpectra)</span></span>
-<span><span class="co">#&gt; 19:37:32 Commencing optimization for 500 epochs, with 245502 positive edges</span></span>
-<span><span class="co">#&gt; 19:37:32 Using rng type: pcg</span></span>
-<span><span class="co">#&gt; 19:37:37 Optimization finished</span></span>
+<span><span class="co">#&gt; 16:29:08 Writing NN index file to temp file /var/folders/tw/783hgvc55jv1b7mqflwpjc7h0000gp/T//RtmpSm6IMd/file1246e24c7745b</span></span>
+<span><span class="co">#&gt; 16:29:08 Searching Annoy index using 1 thread, search_k = 3000</span></span>
+<span><span class="co">#&gt; 16:29:09 Annoy recall = 100%</span></span>
+<span><span class="co">#&gt; 16:29:09 Commencing smooth kNN distance calibration using 1 thread with target n_neighbors = 30</span></span>
+<span><span class="co">#&gt; 16:29:10 Initializing from normalized Laplacian + noise (using RSpectra)</span></span>
+<span><span class="co">#&gt; 16:29:10 Commencing optimization for 500 epochs, with 245502 positive edges</span></span>
+<span><span class="co">#&gt; 16:29:10 Using rng type: pcg</span></span>
+<span><span class="co">#&gt; 16:29:15 Optimization finished</span></span>
 <span><span class="co">#&gt; ---- Testing k.param = 10 ----</span></span>
 <span><span class="co">#&gt; Computing nearest neighbor graph</span></span>
 <span><span class="co">#&gt; Computing SNN</span></span>
@@ -525,8 +523,6 @@ comprehensive single-cell analysis:</p>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;    0    1    2    3    4    5 </span></span>
 <span><span class="co">#&gt; 2538 1306 1174  390  284  201</span></span>
-<span><span class="co">#&gt; Warning in dotplots_pdf(object = object, features = features, temp_clusters =</span></span>
-<span><span class="co">#&gt; temp_clusters): Some features are not in the Seurat object</span></span>
 <span><span class="co">#&gt; Calculating cluster 0</span></span>
 <span><span class="co">#&gt; Warning: The `slot` argument of `GetAssayData()` is deprecated as of SeuratObject 5.0.0.</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Please use the `layer` argument instead.</span></span>
@@ -571,8 +567,6 @@ comprehensive single-cell analysis:</p>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;    0    1    2    3    4    5    6    7 </span></span>
 <span><span class="co">#&gt; 1447 1285 1213  785  424  284  254  201</span></span>
-<span><span class="co">#&gt; Warning in dotplots_pdf(object = object, features = features, temp_clusters =</span></span>
-<span><span class="co">#&gt; temp_clusters): Some features are not in the Seurat object</span></span>
 <span><span class="co">#&gt; Calculating cluster 0</span></span>
 <span><span class="co">#&gt; Calculating cluster 1</span></span>
 <span><span class="co">#&gt; Calculating cluster 2</span></span>
@@ -603,8 +597,6 @@ comprehensive single-cell analysis:</p>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;    0    1    2    3    4    5    6 </span></span>
 <span><span class="co">#&gt; 2558 1292 1172  396  218  199   58</span></span>
-<span><span class="co">#&gt; Warning in dotplots_pdf(object = object, features = features, temp_clusters =</span></span>
-<span><span class="co">#&gt; temp_clusters): Some features are not in the Seurat object</span></span>
 <span><span class="co">#&gt; Calculating cluster 0</span></span>
 <span><span class="co">#&gt; Calculating cluster 1</span></span>
 <span><span class="co">#&gt; Calculating cluster 2</span></span>
@@ -634,8 +626,6 @@ comprehensive single-cell analysis:</p>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;    0    1    2    3    4    5    6 </span></span>
 <span><span class="co">#&gt; 1645 1302 1299 1172  218  199   58</span></span>
-<span><span class="co">#&gt; Warning in dotplots_pdf(object = object, features = features, temp_clusters =</span></span>
-<span><span class="co">#&gt; temp_clusters): Some features are not in the Seurat object</span></span>
 <span><span class="co">#&gt; Calculating cluster 0</span></span>
 <span><span class="co">#&gt; Calculating cluster 1</span></span>
 <span><span class="co">#&gt; Calculating cluster 2</span></span>
@@ -665,8 +655,6 @@ comprehensive single-cell analysis:</p>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;    0    1    2    3    4    5    6    7    8 </span></span>
 <span><span class="co">#&gt; 1389 1300 1172  882  426  249  218  199   58</span></span>
-<span><span class="co">#&gt; Warning in dotplots_pdf(object = object, features = features, temp_clusters =</span></span>
-<span><span class="co">#&gt; temp_clusters): Some features are not in the Seurat object</span></span>
 <span><span class="co">#&gt; Calculating cluster 0</span></span>
 <span><span class="co">#&gt; Calculating cluster 1</span></span>
 <span><span class="co">#&gt; Calculating cluster 2</span></span>
@@ -928,7 +916,7 @@ this:<a class="anchor" aria-label="anchor" href="#if-you-prefer-hard-cutoff-you-
 <span><span class="va">dims</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span><span class="op">:</span><span class="fl">2</span>, <span class="fl">5</span><span class="op">:</span><span class="fl">10</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level3">
-<h3 id="umap-and-clustering">UMAP and clustering<a class="anchor" aria-label="anchor" href="#umap-and-clustering"></a>
+<h3 id="umap-clustering-and-dge">UMAP, clustering and DGE<a class="anchor" aria-label="anchor" href="#umap-clustering-and-dge"></a>
 </h3>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">object</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://satijalab.org/seurat/reference/RunUMAP.html" class="external-link">RunUMAP</a></span><span class="op">(</span><span class="va">object</span>, reduction <span class="op">=</span> <span class="st">"pca"</span>, dims <span class="op">=</span> <span class="va">dims</span>, seed.use <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
@@ -959,27 +947,28 @@ this:<a class="anchor" aria-label="anchor" href="#if-you-prefer-hard-cutoff-you-
 <span>    title <span class="op">=</span> <span class="st">"Cluster Distribution"</span></span>
 <span>  <span class="op">)</span></span>
 <span>  </span>
-<span>  <span class="va">n_layers</span> <span class="op">&lt;-</span> <span class="va">object</span><span class="op">[[</span><span class="va">cluster_distribution_layers</span><span class="op">]</span><span class="op">]</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span> <span class="fu"><a href="https://rdrr.io/r/base/unlist.html" class="external-link">unlist</a></span><span class="op">(</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span> <span class="va">as.character</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span> <span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span> <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="op">)</span></span>
+<span>  <span class="va">n_layers</span> <span class="op">&lt;-</span> <span class="va">object</span><span class="op">[[</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Time_point"</span>, <span class="st">"Cohort"</span><span class="op">)</span><span class="op">]</span><span class="op">]</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span> <span class="fu"><a href="https://rdrr.io/r/base/unlist.html" class="external-link">unlist</a></span><span class="op">(</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span> <span class="va">as.character</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span> <span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span> <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="op">)</span></span>
 <span>  <span class="va">width</span> <span class="op">&lt;-</span> <span class="fl">5</span> <span class="op">+</span> <span class="fl">0.3</span> <span class="op">*</span> <span class="va">n_layers</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggsave.html" class="external-link">ggsave</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="va">temp_clusters</span>, <span class="st">"_barplot.png"</span><span class="op">)</span>, plot <span class="op">=</span> <span class="va">plots</span>, width <span class="op">=</span> <span class="va">width</span>, height <span class="op">=</span> <span class="fl">5.5</span>, dpi <span class="op">=</span> <span class="fl">300</span><span class="op">)</span></span>
 <span>  </span>
-<span>  <span class="kw">if</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">cluster_distribution_layers</span><span class="op">)</span> <span class="op">==</span> <span class="fl">3</span><span class="op">)</span><span class="op">{</span></span>
-<span>    <span class="va">combined_3layer_plot</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/combine_stacked_bars.html">combine_stacked_bars</a></span><span class="op">(</span><span class="va">plots</span><span class="op">)</span></span>
-<span>    <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggsave.html" class="external-link">ggsave</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="va">temp_clusters</span>, <span class="st">"_barplot.png"</span><span class="op">)</span>, plot <span class="op">=</span> <span class="va">combined_3layer_plot</span>, width <span class="op">=</span> <span class="va">width</span>, height <span class="op">=</span> <span class="fl">5.5</span>, dpi <span class="op">=</span> <span class="fl">300</span><span class="op">)</span></span>
-<span>  <span class="op">}</span><span class="kw">else</span><span class="op">{</span></span>
-<span>    <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggsave.html" class="external-link">ggsave</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="va">temp_clusters</span>, <span class="st">"_barplot.png"</span><span class="op">)</span>, plot <span class="op">=</span> <span class="va">plots</span>, width <span class="op">=</span> <span class="va">width</span>, height <span class="op">=</span> <span class="fl">5.5</span>, dpi <span class="op">=</span> <span class="fl">300</span><span class="op">)</span></span>
-<span>  <span class="op">}</span></span>
-<span>  </span>
-<span>  <span class="co"># generate dotplot pdf and DGE</span></span>
-<span>  <span class="va">r</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/dotplots_pdf.html">dotplots_pdf</a></span><span class="op">(</span></span>
+<span>  <span class="co"># DGE</span></span>
+<span>  <span class="va">markers</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://satijalab.org/seurat/reference/FindAllMarkers.html" class="external-link">FindAllMarkers</a></span><span class="op">(</span><span class="va">object</span>, min.pct <span class="op">=</span> <span class="fl">0.25</span><span class="op">)</span></span>
+<span>  <span class="va">dge</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/select_marker_genes_score.html">select_marker_genes_score</a></span><span class="op">(</span><span class="va">markers</span><span class="op">)</span></span>
+<span></span>
+<span>  <span class="fu"><a href="../reference/dotplots_pdf.html">dotplots_pdf</a></span><span class="op">(</span></span>
 <span>    object <span class="op">=</span> <span class="va">object</span>,</span>
-<span>    features <span class="op">=</span> <span class="va">selected_features</span>,</span>
-<span>    temp_clusters <span class="op">=</span> <span class="va">temp_clusters</span></span>
+<span>    features.1 <span class="op">=</span> <span class="va">features</span>,</span>
+<span>    features.2 <span class="op">=</span> <span class="va">dge</span><span class="op">$</span><span class="va">gene</span>,</span>
+<span>    file_name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="va">temp_clusters</span>, <span class="st">"_dotplot.pdf"</span><span class="op">)</span></span>
 <span>  <span class="op">)</span></span>
 <span></span>
-<span>  <span class="va">genes</span> <span class="op">&lt;-</span> <span class="va">r</span><span class="op">$</span><span class="va">genes</span></span>
-<span>  </span>
-<span>  <span class="co"># visualize DGE by cell-level heatmap</span></span>
-<span>  <span class="fu"><a href="../reference/heatmap_cell_level.html">heatmap_cell_level</a></span><span class="op">(</span><span class="va">object</span>, features <span class="op">=</span> <span class="va">genes</span>, cluster <span class="op">=</span> <span class="va">temp_clusters</span>, <span class="va">colors</span><span class="op">)</span></span>
+<span>  <span class="co"># swap cell-level heatmap with pseodubulk-level</span></span>
+<span>  <span class="fu"><a href="../reference/heatmap_pseudobulk.html">heatmap_pseudobulk</a></span><span class="op">(</span><span class="va">object</span>, </span>
+<span>                     features <span class="op">=</span> <span class="va">dge</span><span class="op">$</span><span class="va">gene</span>, </span>
+<span>                     groups <span class="op">=</span> <span class="st">"Patient"</span>,</span>
+<span>                     idents <span class="op">=</span> <span class="va">temp_clusters</span>, </span>
+<span>                     <span class="va">colors</span>, </span>
+<span>                     file_name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="va">temp_clusters</span>, <span class="st">"_heatmap.png"</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="op">}</span></span></code></pre></div>
 </div>
 </div>
@@ -1140,7 +1129,7 @@ this:<a class="anchor" aria-label="anchor" href="#if-you-prefer-hard-cutoff-you-
 
 
 
-  inst/pkgdown/images.css
+
 
   </body>
 </html>
