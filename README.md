@@ -7,15 +7,16 @@
 
 **BioYourOwnBowl** is an R package for single-cell RNA-seq analysis
 based on Seurat, with utilities tailored for relatively homogeneous
-datasets. It streamlines iterative analysis by reducing manual overhead,
-such as figure sizing and repetitive parameter tuning.
+datasets.
 
 The package provides an automated workflow for generating nuanced
-clustering and comprehensive visualizations to support evaluation. The
-workflow is modular: each function can be used independently, allowing
-users to assemble and customize their own analysis pipeline.
+clustering and comprehensive visualizations to support evaluation. It
+streamlines iterative analysis while reducing manual overhead,
+e.g. figure sizing and repetitive parameter tuning. The workflow is
+modular: each function can work independently, allowing users to
+assemble and customize their own analysis pipeline.
 
-<p style="margin-top: 2em;">
+<p style="margin-top: 2em; text-align: center;">
 <img src="man/figures/readme.png" width="50%"/>
 </p>
 
@@ -29,32 +30,32 @@ You can install the development version of BioYourOwnBowl from
 remotes::install_github("june-zhang-bioinfo/BioYourOwnBowl")
 ```
 
+## Documentation
+
+For a complete example workflow with detailed explanations, see
+[vignettes](https://june-zhang-bioinfo.github.io/BioYourOwnBowl/).
+
 ## Key Features
 
 - **End-to-end analysis**: define your parameters at once and get all
   results with one function.
 - **Save parameters and session info automatically**: record how you get
   here.
+- **Biological inspection**: export variable features and top genes per
+  PC.
 - **Automated function**: low-quality cluster removal, select principal
   components by elbow plot.
-- **Flexible variable feature selection**: vst, dispersion, pseudobulk,
-  SCT, integration anchors
 - **Clustering optimization**: parameter sweeps and save results with
   desired granularity only.
 - **Advanced visualizations**: cell-level, pseudobulk-level and
   meta-level heatmaps, 2-dimensional volcano plots, density plot with
   scanpy, violin plots with pronounced non-zero distribution and
   statistical test, area proportional venn plots and treemaps.
-- **Interacte with Python**: configurate python environment and run
-  python in Rstudio.
+- **Interacte with Python**: configure python environment and run python
+  in Rstudio.
 - **cNMF visualization**: top genes per program, programs projection on
   UMAP, cNMF comparison heatmaps, gene locating.
 - **Batch correction support**: via Harmony.
-
-## Documentation
-
-For a complete example workflow with detailed explanations, see
-[vignette](https://june-zhang-bioinfo.github.io/BioYourOwnBowl/).
 
 ## Quick Example
 

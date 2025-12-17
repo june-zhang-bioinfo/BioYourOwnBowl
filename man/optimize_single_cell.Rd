@@ -27,6 +27,7 @@ optimize_single_cell(
   clusters_min = 4,
   clusters_max = 13,
   min.pct = 0.3,
+  log2fc_cutoff = log2(1.5),
   lower_bound_param = 1,
   higher_bound_param = 2,
   cluster_distribution_layers = NULL,
@@ -80,6 +81,8 @@ optimize_single_cell(
 \item{clusters_max}{Maximum number of clusters expected. Default is 13.}
 
 \item{min.pct}{Minimum percentage expressed required for a gene to become DEG. Default is 0.3.}
+
+\item{log2fc_cutoff}{Minimum log2fc required for a gene to become DEG. Default is log2(1.5).}
 
 \item{lower_bound_param}{Lower bound parameter for low-quality cluster removal. To be more stringent, decrease this parameter. Default is 1.}
 

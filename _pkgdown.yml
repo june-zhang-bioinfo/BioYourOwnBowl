@@ -1,11 +1,10 @@
 development:
   mode: auto
-home:
-  strip_header: true
 url: https://github.com/june-zhang-bioinfo/BioYourOwnBowl
 template:
   params:
-    bootswatch: flatly  # optional
-  includes:
-    after_body: inst/pkgdown/images.css
-
+    bootswatch: journal
+  assets:
+    - inst/pkgdown/images.css
+home:
+  strip_header: false

@@ -1,0 +1,16 @@
+.article img {
+  max-width: none !important;
+}
+/* Constrain content width for readability */
+.article {
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Optional: make code blocks slightly narrower */
+.article pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+

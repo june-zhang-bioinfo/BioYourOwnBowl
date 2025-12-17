@@ -21,10 +21,9 @@ knitr::opts_chunk$set(
 
 ## Introduction
 
-**BioYourOwnBowl** provides a comprehensive pipeline for single-cell RNA-seq analysis using Seurat. This vignette demonstrates the main workflow using example data from article: https://pmc.ncbi.nlm.nih.gov/articles/PMC8376199/. To maximize the efficiency, this object is downsampled and has metadata included.
+**BioYourOwnBowl** provides a comprehensive pipeline for single-cell RNA-seq analysis using Seurat. This vignette demonstrates the main workflow using example data from article: https://pmc.ncbi.nlm.nih.gov/articles/PMC8376199/. The seurat object is downsampled and has metadata included.
 
-[placeholder: pipeline visualization? and explanation?]
-[placeholder: what is cluster-based cell qc and why, why iterate different k and r combinations, why selected features (prior knowledge)]
+The results from this notebook can be found in https://github.com/june-zhang-bioinfo/BioYourOwnBowl/tree/main/vignettes/main_workflow.
 
 ## Installation
 
@@ -35,7 +34,7 @@ remotes::install_github("june-zhang-bioinfo/BioYourOwnBowl")
 
 ## Load Libraries
 
-```{r setup}
+```{r eval=FALSE}
 library(BioYourOwnBowl)
 library(Seurat)
 library(ggplot2)
@@ -48,7 +47,6 @@ library(eulerr)
 library(RColorBrewer)
 library(treemap)
 library(stringr)
-
 library(grDevices)
 library(stats)
 library(utils)
@@ -71,7 +69,7 @@ library(yaml)
 
 We'll start with loading example dataset.
 
-```{r eval=TRUE, echo=TRUE}
+```{r eval=FALSE, echo=TRUE}
 data_dir_base <- system.file("extdata", package = "BioYourOwnBowl")
 data_path <- file.path(data_dir_base, "GSE178756_downsampled.rds")
 seurat_obj <- readRDS(data_path)
@@ -80,7 +78,7 @@ seurat_obj
 
 ## Define Color Palette
 
-```{r eval=TRUE, echo=TRUE}
+```{r eval=FALSE, echo=TRUE}
 colors <- c(
   "#e6194B", 
   "#86D3B2", 
@@ -111,7 +109,7 @@ colors <- c(
 You can provide genes of interest. 
 These genes will be used for Highly variable genes information (HVG_info.csv) and main-variance plot (so you can see if they are considered as variable features) and the dot plot for your clustering results.
 
-```{r eval=TRUE, echo=TRUE}
+```{r eval=FALSE, echo=TRUE}
 selected_features <- c(
   "CD8A", "CD8B",
   "CD3D", "CD3E", "CD3G",
@@ -130,7 +128,7 @@ selected_features <- c(
 
 The `optimize_single_cell()` function performs comprehensive single-cell analysis:
 
-```{r eval=TRUE, echo=TRUE, error=TRUE, include=TRUE}
+```{r eval=FALSE, echo=TRUE, error=TRUE, include=TRUE}
 seurat_obj <- optimize_single_cell(
   object = seurat_obj,
 
@@ -350,7 +348,7 @@ print(dims)
 dims <- c(1:2, 5:10)
 ```
 
-### UMAP and clustering
+### UMAP, clustering and DGE
 ```{r eval=FALSE, echo=TRUE}
 object <- RunUMAP(object, reduction = "pca", dims = dims, seed.use = 123)
 object <- clustering(object, 
@@ -380,27 +378,28 @@ for(temp_clusters in clusters){
     title = "Cluster Distribution"
   )
   
-  n_layers <- object[[cluster_distribution_layers]] %>% unlist() %>% as.character %>% unique() %>% length()
+  n_layers <- object[[c("Time_point", "Cohort")]] %>% unlist() %>% as.character %>% unique() %>% length()
   width <- 5 + 0.3 * n_layers
+  ggsave(paste0(temp_clusters, "_barplot.png"), plot = plots, width = width, height = 5.5, dpi = 300)
   
-  if(length(cluster_distribution_layers) == 3){
-    combined_3layer_plot <- combine_stacked_bars(plots)
-    ggsave(paste0(temp_clusters, "_barplot.png"), plot = combined_3layer_plot, width = width, height = 5.5, dpi = 300)
-  }else{
-    ggsave(paste0(temp_clusters, "_barplot.png"), plot = plots, width = width, height = 5.5, dpi = 300)
-  }
-  
-  # generate dotplot pdf and DGE
-  r <- dotplots_pdf(
+  # DGE
+  markers <- FindAllMarkers(object, min.pct = 0.25)
+  dge <- select_marker_genes_score(markers)
+
+  dotplots_pdf(
     object = object,
-    features = selected_features,
-    temp_clusters = temp_clusters
+    features.1 = features,
+    features.2 = dge$gene,
+    file_name = paste0(temp_clusters, "_dotplot.pdf")
   )
 
-  genes <- r$genes
-  
-  # visualize DGE by cell-level heatmap
-  heatmap_cell_level(object, features = genes, cluster = temp_clusters, colors)
+  # swap cell-level heatmap with pseodubulk-level
+  heatmap_pseudobulk(object, 
+                     features = dge$gene, 
+                     groups = "Patient",
+                     idents = temp_clusters, 
+                     colors, 
+                     file_name = paste0(temp_clusters, "_heatmap.png"))
 }
 ```
 

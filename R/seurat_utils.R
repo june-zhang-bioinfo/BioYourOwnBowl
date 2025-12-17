@@ -597,6 +597,12 @@ remove_low_quality_clusters <- function(object,
       scale_fill_manual(values = cluster_colors) +
       ggtitle("Clusters flagged for removal (in red)")
   )
+  
+  # grid.newpage()
+  # grid.draw(grid.text(
+  #   cluster_stats$nFeature_RNA,
+  #   x = 0.5, y = 0.6
+  # ))
 
   # --- Subset Seurat object ---
   object <- subset(object, seurat_clusters %in% low_quality_clusters, invert = TRUE)
@@ -1230,6 +1236,7 @@ combine_stacked_bars <- function(plot_list, layer_order = NULL) {
 #' @param clusters_min Minimum number of clusters expected. Default is 4.
 #' @param clusters_max Maximum number of clusters expected. Default is 13.
 #' @param min.pct Minimum percentage expressed required for a gene to become DEG. Default is 0.3.
+#' @param log2fc_cutoff Minimum log2fc required for a gene to become DEG. Default is log2(1.5).
 #' @param lower_bound_param Lower bound parameter for low-quality cluster removal. To be more stringent, decrease this parameter. Default is 1.
 #' @param higher_bound_param Upper bound parameter for low-quality cluster removal. To be more stringent, increase this parameter. Default is 2.
 #' @param cluster_distribution_layers Character vector of metadata columns for cluster distribution plots. Default is NULL.
@@ -1305,6 +1312,7 @@ optimize_single_cell <- function(object = NULL,
                                  clusters_min = 4,
                                  clusters_max = 13,
                                  min.pct = 0.3,
+                                 log2fc_cutoff = log2(1.5), 
                                  lower_bound_param = 1,
                                  higher_bound_param = 2,
                                  cluster_distribution_layers = NULL,
@@ -1488,7 +1496,9 @@ optimize_single_cell <- function(object = NULL,
     }
     
     markers <- FindAllMarkers(object, min.pct = min.pct)
-    dge <- select_marker_genes_score(markers)
+    dge <- select_marker_genes_score(markers, log2fc_cutoff = log2fc_cutoff)
+    
+    write.csv(dge, paste0(temp_clusters, "_dge.csv"))
 
     dotplots_pdf(
       object = object,

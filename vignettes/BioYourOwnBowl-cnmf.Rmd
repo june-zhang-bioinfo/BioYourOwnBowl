@@ -21,7 +21,7 @@ knitr::opts_chunk$set(
 
 ## Introduction
 
-**BioYourOwnBowl** provides a comprehensive pipeline for single-cell RNA-seq analysis using Seurat. This vignette demonstrates the main workflow using example data from article: https://pmc.ncbi.nlm.nih.gov/articles/PMC8376199/.The seurat object is downsampled and has metadata included.
+**BioYourOwnBowl** provides a comprehensive pipeline for single-cell RNA-seq analysis using Seurat. This vignette demonstrates the main workflow using example data from article: https://pmc.ncbi.nlm.nih.gov/articles/PMC8376199/. The seurat object is downsampled and has metadata included.
 
 Consensus Non-negative Matrix Factorization is a widely used computational method designed to identify gene expression programs (GEPs) from single-cell RNA sequencing (scRNA-seq) data.
 
@@ -34,6 +34,9 @@ This vignette provide comprehensive visualizations and data mining of cNMF resul
 - Assign top programs per cell (Primary, Secondary, Tietary, etc) with cutoff
 - Visualize Primary usage based on meta data
 - Compare the similarity of cNMF (to self or siblings)
+
+
+The results from this notebook can be found in https://github.com/june-zhang-bioinfo/BioYourOwnBowl/tree/main/vignettes/cnmf.
 
 
 ## Installation
@@ -58,7 +61,6 @@ library(eulerr)
 library(RColorBrewer)
 library(treemap)
 library(stringr)
-
 library(grDevices)
 library(stats)
 library(utils)
@@ -82,9 +84,7 @@ library(yaml)
 Load the processed object from the main pipeline.
 
 ```{r eval=TRUE, echo=TRUE, error=TRUE, include=TRUE}
-# Load processed seurat object
 data_dir_base <- system.file("extdata", package = "BioYourOwnBowl")
-# data_dir_base <- "/Users/zz005/Documents/github/R/example_data/"
 data_path <- file.path(data_dir_base, "GSE178756_processed.rds")
 seurat_obj <- readRDS(data_path)
 seurat_obj

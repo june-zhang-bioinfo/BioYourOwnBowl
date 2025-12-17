@@ -95,6 +95,7 @@ QC and analysis plots.</p>
 <span>  clusters_min <span class="op">=</span> <span class="fl">4</span>,</span>
 <span>  clusters_max <span class="op">=</span> <span class="fl">13</span>,</span>
 <span>  min.pct <span class="op">=</span> <span class="fl">0.3</span>,</span>
+<span>  log2fc_cutoff <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">log2</a></span><span class="op">(</span><span class="fl">1.5</span><span class="op">)</span>,</span>
 <span>  lower_bound_param <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  higher_bound_param <span class="op">=</span> <span class="fl">2</span>,</span>
 <span>  cluster_distribution_layers <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -195,6 +196,10 @@ QC and analysis plots.</p>
 
 <dt id="arg-min-pct">min.pct<a class="anchor" aria-label="anchor" href="#arg-min-pct"></a></dt>
 <dd><p>Minimum percentage expressed required for a gene to become DEG. Default is 0.3.</p></dd>
+
+
+<dt id="arg-log-fc-cutoff">log2fc_cutoff<a class="anchor" aria-label="anchor" href="#arg-log-fc-cutoff"></a></dt>
+<dd><p>Minimum log2fc required for a gene to become DEG. Default is log2(1.5).</p></dd>
 
 
 <dt id="arg-lower-bound-param">lower_bound_param<a class="anchor" aria-label="anchor" href="#arg-lower-bound-param"></a></dt>

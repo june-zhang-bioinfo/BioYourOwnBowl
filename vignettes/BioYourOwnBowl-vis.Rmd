@@ -21,7 +21,7 @@ knitr::opts_chunk$set(
 
 ## Introduction
 
-**BioYourOwnBowl** provides a comprehensive pipeline for single-cell RNA-seq analysis using Seurat. This vignette demonstrates the main workflow using example data from article: https://pmc.ncbi.nlm.nih.gov/articles/PMC8376199/.The seurat object is downsampled and has metadata included.
+**BioYourOwnBowl** provides a comprehensive pipeline for single-cell RNA-seq analysis using Seurat. This vignette demonstrates the main workflow using example data from article: https://pmc.ncbi.nlm.nih.gov/articles/PMC8376199/. The seurat object is downsampled and has metadata included.
 
 This vignette includes the advanced visualizations, e.g. :
 scaled feature plots, 
@@ -335,6 +335,8 @@ result <- venn_plots(
 
 ### Treemaps
 This dataset doesn't have TCR information, so we use simulated data for illustration purpose.
+
+The treemaps can be found in https://github.com/june-zhang-bioinfo/BioYourOwnBowl/tree/main/vignettes.
 
 ```{r}
 n_cells <- 1500

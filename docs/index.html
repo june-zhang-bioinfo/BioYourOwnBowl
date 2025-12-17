@@ -86,9 +86,9 @@
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 <!-- badges: start -->
 <!-- badges: end -->
-<p><strong>BioYourOwnBowl</strong> is an R package for single-cell RNA-seq analysis based on Seurat, with utilities tailored for relatively homogeneous datasets. It streamlines iterative analysis by reducing manual overhead, such as figure sizing and repetitive parameter tuning.</p>
-<p>The package provides an automated workflow for generating nuanced clustering and comprehensive visualizations to support evaluation. The workflow is modular: each function can be used independently, allowing users to assemble and customize their own analysis pipeline.</p>
-<p style="margin-top: 2em;">
+<p><strong>BioYourOwnBowl</strong> is an R package for single-cell RNA-seq analysis based on Seurat, with utilities tailored for relatively homogeneous datasets.</p>
+<p>The package provides an automated workflow for generating nuanced clustering and comprehensive visualizations to support evaluation. It streamlines iterative analysis while reducing manual overhead, e.g. figure sizing and repetitive parameter tuning. The workflow is modular: each function can work independently, allowing users to assemble and customize their own analysis pipeline.</p>
+<p style="margin-top: 2em; text-align: center;">
 <img src="reference/figures/readme.png" width="50%"></p>
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
@@ -99,6 +99,11 @@
 <span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"june-zhang-bioinfo/BioYourOwnBowl"</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
+<h2 id="documentation">Documentation<a class="anchor" aria-label="anchor" href="#documentation"></a>
+</h2>
+<p>For a complete example workflow with detailed explanations, see <a href="https://june-zhang-bioinfo.github.io/BioYourOwnBowl/" class="external-link">vignettes</a>.</p>
+</div>
+<div class="section level2">
 <h2 id="key-features">Key Features<a class="anchor" aria-label="anchor" href="#key-features"></a>
 </h2>
 <ul>
@@ -107,25 +112,20 @@
 <li>
 <strong>Save parameters and session info automatically</strong>: record how you get here.</li>
 <li>
-<strong>Automated function</strong>: low-quality cluster removal, select principal components by elbow plot.</li>
+<strong>Biological inspection</strong>: export variable features and top genes per PC.</li>
 <li>
-<strong>Flexible variable feature selection</strong>: vst, dispersion, pseudobulk, SCT, integration anchors</li>
+<strong>Automated function</strong>: low-quality cluster removal, select principal components by elbow plot.</li>
 <li>
 <strong>Clustering optimization</strong>: parameter sweeps and save results with desired granularity only.</li>
 <li>
 <strong>Advanced visualizations</strong>: cell-level, pseudobulk-level and meta-level heatmaps, 2-dimensional volcano plots, density plot with scanpy, violin plots with pronounced non-zero distribution and statistical test, area proportional venn plots and treemaps.</li>
 <li>
-<strong>Interacte with Python</strong>: configurate python environment and run python in Rstudio.</li>
+<strong>Interacte with Python</strong>: configure python environment and run python in Rstudio.</li>
 <li>
 <strong>cNMF visualization</strong>: top genes per program, programs projection on UMAP, cNMF comparison heatmaps, gene locating.</li>
 <li>
 <strong>Batch correction support</strong>: via Harmony.</li>
 </ul>
-</div>
-<div class="section level2">
-<h2 id="documentation">Documentation<a class="anchor" aria-label="anchor" href="#documentation"></a>
-</h2>
-<p>For a complete example workflow with detailed explanations, see <a href="https://june-zhang-bioinfo.github.io/BioYourOwnBowl/" class="external-link">vignette</a>.</p>
 </div>
 <div class="section level2">
 <h2 id="quick-example">Quick Example<a class="anchor" aria-label="anchor" href="#quick-example"></a>
