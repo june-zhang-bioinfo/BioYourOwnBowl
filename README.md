@@ -51,7 +51,7 @@ For a complete example workflow with detailed explanations, see
   meta-level heatmaps, 2-dimensional volcano plots, density plot with
   scanpy, violin plots with pronounced non-zero distribution and
   statistical test, area proportional venn plots and treemaps.
-- **Interacte with Python**: configure python environment and run python
+- **Interact with Python**: configure python environment and run python
   in Rstudio.
 - **cNMF visualization**: top genes per program, programs projection on
   UMAP, cNMF comparison heatmaps, gene locating.
