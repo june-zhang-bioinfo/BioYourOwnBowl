@@ -11,7 +11,7 @@ volcano_plots(
   ident2,
   show_labels = FALSE,
   log2fc_cutoff = 1,
-  p_cutoff = 0.01,
+  p_cutoff = 0.05,
   file_name = NULL,
   title = NULL,
   width = 2000,

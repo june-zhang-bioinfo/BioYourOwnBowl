@@ -337,6 +337,96 @@ export_top_pc_genes <- function(object,
   head(top_genes_df)
 }
 
+#' Select marker genes based on p-value or log2FC ranking
+#'
+#' This function selects marker genes from a differential expression results table
+#' by ranking either statistical significance (`p_val_adj`) or
+#' effect size (`avg_log2FC`). It can take results from both `FindAllMarkers` (> 2 groups) and `FindMarkers` (2 groups).
+
+#' 
+#' If using results from `FindMarkers`, `direction` doesn't take effect. Please make sure you add `cluster` column indicating the group name in the input.
+#' 
+#' @param markers A data frame or tibble containing marker gene statistics.
+#'   Must include the following columns:
+#'   \describe{
+#'     \item{gene}{Gene name or identifier.}
+#'     \item{cluster}{Cluster or group label.}
+#'     \item{p_val_adj}{Adjusted p-value (typically from a Seurat differential expression test).}
+#'     \item{avg_log2FC}{Average log2 fold change between the cluster and others.}
+#'   }
+#' @param top_n Integer specifying the number of top marker genes to select per cluster,
+#'   ranked by score. Default is 25.
+#' @param direction Character string specifying whether to select upregulated
+#'   (`"up"`) or downregulated (`"down"`) genes. Default is `"up"`.
+#' @param adj_p_cutoff Numeric value specifying the statistical significance cutoff.
+#' @param log2fc_cutoff Numeric value specifying the minimum absolute log2 fold change
+#'   threshold. Default is 0.
+#' @param rank_by Character string specifying ranking metric:
+#'   "p_val_adj" or "avg_log2FC". Default is p_val_adj.
+#'
+#' @return A data frame of selected marker genes.
+#'
+#' @export
+select_marker_genes_rank <- function(markers,
+                                     top_n = 25,
+                                     direction = "up",
+                                     rank_by = "p_val_adj",
+                                     adj_p_cutoff = 0.05,
+                                     log2fc_cutoff = 0) {
+  
+  # Avoid zero p-values
+  markers$p_val_adj <- ifelse(
+    markers$p_val_adj == 0,
+    .Machine$double.xmin,
+    markers$p_val_adj
+  )
+  
+  # Filtering (same logic as your original function)
+  if (length(unique(markers$cluster)) > 2) {
+    if (direction == "up") {
+      features <- markers %>%
+        dplyr::filter(
+          p_val_adj <= adj_p_cutoff,
+          avg_log2FC > log2fc_cutoff
+        )
+    } else {
+      features <- markers %>%
+        dplyr::filter(
+          p_val_adj <= adj_p_cutoff,
+          avg_log2FC < -log2fc_cutoff
+        )
+    }
+  } else {
+    features <- markers %>%
+      dplyr::filter(p_val_adj <= adj_p_cutoff)
+  }
+  
+  # Ranking
+  if (rank_by == "p_val_adj") {
+    top_features <- features %>%
+      dplyr::group_by(cluster) %>%
+      dplyr::arrange(p_val_adj, .by_group = TRUE) %>%
+      dplyr::slice_head(n = top_n)
+  } else {
+    if (direction == "down" && length(unique(markers$cluster)) > 2) {
+      top_features <- features %>%
+        dplyr::group_by(cluster) %>%
+        dplyr::arrange(avg_log2FC, .by_group = TRUE) %>%
+        dplyr::slice_head(n = top_n)
+    } else {
+      top_features <- features %>%
+        dplyr::group_by(cluster) %>%
+        dplyr::arrange(desc(avg_log2FC), .by_group = TRUE) %>%
+        dplyr::slice_head(n = top_n)
+    }
+  }
+  
+  top_features %>%
+    dplyr::ungroup() %>%
+    dplyr::distinct(gene, cluster, .keep_all = TRUE) %>%
+    as.data.frame()
+}
+
 
 
 #' Select marker genes based on product score
@@ -425,8 +515,6 @@ select_marker_genes_score <- function(markers,
     distinct(gene, cluster, .keep_all = TRUE) %>%
     arrange(cluster, desc(score)) %>%
     as.data.frame()
-  
-  return(top_features)
 }
 
 
@@ -509,41 +597,34 @@ dotplots_png <- function(
 #'                      file_name = "dotplot.pdf")
 #' }
 #' @export
-dotplots_pdf <- function(object, features.1, features.2, file_name = "dotplot.pdf") {
+dotplots_pdf <- function(object, features, file_name = "dotplot.pdf") {
   
   if (!inherits(object, "Seurat"))
     stop("object must be a Seurat object")
   
-  if (!is.character(features.1) || length(features.1) == 0)
-    stop("feature.1 must be a non-empty character vector")
+  if (!is.list(features) || length(features) == 0)
+    stop("features must be a non-empty list of character vectors")
   
-  if (!is.character(features.2) || length(features.2) == 0)
-    stop("feature.2 must be a non-empty character vector")
+  # Check that all list elements are character vectors
+  if (!all(sapply(features, is.character)))
+    stop("All elements in features list must be character vectors")
   
   pdf(
     file_name,
     width = length(unique(Idents(object))) * 5.7,
     height = length(unique(Idents(object))) * 0.6
   )
-
-  # First dot plot
-  print(
-    DotPlot(object, features = features.1) +
-      RotatedAxis() +
-      scale_colour_gradient2(low = "#0024d6", mid = "#b4b6bf", high = "#d91111")
-  )
-
-  # Second dot plot
-  print(
-    DotPlot(object, features = unique(features.2)) +
-      RotatedAxis() +
-      scale_colour_gradient2(low = "#0024d6", mid = "#b4b6bf", high = "#d91111")
-  )
-
+  
+  # Loop through each element in the features list
+  for (i in seq_along(features)) {
+    print(
+      DotPlot(object, features = unique(features[[i]])) +
+        RotatedAxis() +
+        scale_colour_gradient2(low = "#0024d6", mid = "#b4b6bf", high = "#d91111")
+    )
+  }
+  
   dev.off()
-
-  # head(genes)
-  # return(list(markers = markers, genes = genes))
 }
 
 
@@ -596,6 +677,12 @@ remove_low_quality_clusters <- function(object,
     RidgePlot(object, features = "nFeature_RNA") +
       scale_fill_manual(values = cluster_colors) +
       ggtitle("Clusters flagged for removal (in red)")
+  )
+  
+  print(
+    RidgePlot(object, features = "nCount_RNA") +
+      scale_fill_manual(values = cluster_colors) +
+      ggtitle("raw nCount_RNA")
   )
   
   # grid.newpage()
@@ -1499,11 +1586,16 @@ optimize_single_cell <- function(object = NULL,
     dge <- select_marker_genes_score(markers, log2fc_cutoff = log2fc_cutoff)
     
     write.csv(dge, paste0(temp_clusters, "_dge.csv"))
-
+    
+    if(is.list(features)){
+      dotplots_features <- c(features, list(dge$gene))
+    }else{
+      dotplots_features <- list(f1 = features, f2 = dge$gene)
+    }
+    
     dotplots_pdf(
       object = object,
-      features.1 = features,
-      features.2 = dge$gene,
+      features = dotplots_features,
       file_name = paste0(temp_clusters, "_dotplot.pdf")
     )
 

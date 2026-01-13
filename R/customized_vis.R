@@ -638,7 +638,7 @@ volcano_plots <- function(object,
                           ident2,
                           show_labels = FALSE,
                           log2fc_cutoff = 1,
-                          p_cutoff = 0.01,
+                          p_cutoff = 0.05,
                           file_name = NULL,
                           title = NULL,
                           width = 2000,
@@ -1334,7 +1334,8 @@ heatmap_pseudobulk <- function(object,
   zscore_matrix[is.na(zscore_matrix)] <- 0
   
   # --- Prepare cohort grouping with custom order ---
-  cohort_labels <- sapply(strsplit(colnames(zscore_matrix), " "), `[`, 1)
+  # cohort_labels <- sapply(strsplit(colnames(zscore_matrix), " "), `[`, 1)
+  cohort_labels <- sub(" [^ ]+$", "", colnames(zscore_matrix))
   
   # Convert to factor with custom levels
   cohort_labels <- factor(cohort_labels, levels = groups)

@@ -46,7 +46,7 @@ For a complete example workflow with detailed explanations, see [vignettes](http
 - **Automated function**: low-quality cluster removal, select principal components by elbow plot.
 - **Clustering optimization**: parameter sweeps and save results with desired granularity only.
 - **Advanced visualizations**: cell-level, pseudobulk-level and meta-level heatmaps, 2-dimensional volcano plots, density plot with scanpy, violin plots with pronounced non-zero distribution and statistical test, area proportional venn plots and treemaps.
-- **Interacte with Python**: configure python environment and run python in Rstudio.
+- **Interacte with Python**: configure python environment and run python code in Rstudio.
 - **cNMF visualization**: top genes per program, programs projection on UMAP, cNMF comparison heatmaps, gene locating.
 - **Batch correction support**: via Harmony.
 
@@ -93,7 +93,7 @@ seurat_obj <- optimize_single_cell(
 
 ## Main Functions
 
-### Core Pipeline
+### Core Workflow
 
 - `optimize_single_cell()` - Full automated pipeline
 
@@ -146,6 +146,7 @@ The `optimize_single_cell()` function generates:
 - `PCs_top-genes.csv` - Top genes per principal component
 - `dimplot.pdf` - Dimplots showing clustering results
 - `k*_r*_barplot.png` - Cluster distribution plots
+- `k*_r*_dge.csv` - DGE results
 - `k*_r*_dotplot.pdf` - Dot plots for each clustering, including selected features and DGE
 - `k*_r*_heatmap.png` - Expression heatmaps for DGE
 - `object.rds` - Final processed Seurat object
@@ -161,7 +162,7 @@ The `optimize_single_cell()` function generates:
 If you use this package in your research, please cite:
 
 ```
-June Zhang (2025). BioYourOwnBowl: Single-cell RNA-seq Analysis Tools. 
+June Zhang (2025). BioYourOwnBowl: Single-cell RNA-seq Analysis Toolkits. 
 R package version 0.1.0. https://github.com/june-zhang-bioinfo/BioYourOwnBowl
 ```
 

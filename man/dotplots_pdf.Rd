@@ -4,16 +4,16 @@
 \alias{dotplots_pdf}
 \title{Generate DotPlot PDFs for a Seurat Object}
 \usage{
-dotplots_pdf(object, features.1, features.2, file_name = "dotplot.pdf")
+dotplots_pdf(object, features, file_name = "dotplot.pdf")
 }
 \arguments{
 \item{object}{A Seurat object.}
 
+\item{file_name}{A string giving the output pdf filename (\code{dotplot.pdf}).}
+
 \item{features.1}{A character vector of feature names to include in the first DotPlot.}
 
 \item{features.2}{A character vector of feature names to include in the second DotPlot.}
-
-\item{file_name}{A string giving the output pdf filename (\code{dotplot.pdf}).}
 }
 \value{
 A list containing:
