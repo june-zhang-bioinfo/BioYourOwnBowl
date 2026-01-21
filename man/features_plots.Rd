@@ -12,6 +12,7 @@ features_plots(
   base_width = 1000,
   base_height = 1000,
   percentile = 0.9,
+  colors = NULL,
   file_name = NULL
 )
 }
@@ -29,6 +30,9 @@ features_plots(
 \item{base_height}{Height of each plot in pixels. Default is 1000.}
 
 \item{percentile}{The percentile (between 0 and 1) of feature values to be shown. The higher the percentile, the sharper the feature. Default is 0.9.}
+
+\item{colors}{Character vector of colors for the gradient scale. If NULL, uses FeaturePlot_scCustom default colors.
+The first color will automatically be used as the NA color. Default is NULL.}
 
 \item{file_name}{Character string for output png name. If NULL, plot will be printed in console but not saved.
 Default is NULL.}

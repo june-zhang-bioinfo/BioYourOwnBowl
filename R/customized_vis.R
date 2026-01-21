@@ -11,6 +11,8 @@
 #' @param base_width Width of each plot in pixels. Default is 1000.
 #' @param base_height Height of each plot in pixels. Default is 1000.
 #' @param percentile The percentile (between 0 and 1) of feature values to be shown. The higher the percentile, the sharper the feature. Default is 0.9.
+#' @param colors Character vector of colors for the gradient scale. If NULL, uses FeaturePlot_scCustom default colors.
+#'   The first color will automatically be used as the NA color. Default is NULL.
 #' @param file_name Character string for output png name. If NULL, plot will be printed in console but not saved.
 #'   Default is NULL.
 #'
@@ -23,15 +25,21 @@ features_plots <- function(object,
                            base_width = 1000,
                            base_height = 1000,
                            percentile = 0.9,
+                           colors = NULL,
                            file_name = NULL
-                           ) {
+) {
   
   # Ensure selected features exist in the object
   features_to_plot <- intersect(features, c(rownames(object), colnames(object@meta.data)))
   n_features <- length(features_to_plot)
   if (n_features == 0) stop("No selected features found in the Seurat object.")
   
-  p_original <- FeaturePlot_scCustom(object, features = features_to_plot, num_columns = n_col, pt.size = pt.size)
+  # Create original plot
+  if (!is.null(colors)) {
+    p_original <- FeaturePlot_scCustom(seurat_object = object, features = features_to_plot, num_columns = n_col, pt.size = pt.size, colors_use = colors, na_color = "grey90")
+  } else {
+    p_original <- FeaturePlot_scCustom(seurat_object = object, features = features_to_plot, num_columns = n_col, pt.size = pt.size)
+  }
   
   # Calculate grid layout
   n_row <- ceiling(n_features / n_col)
@@ -56,14 +64,29 @@ features_plots <- function(object,
   plots <- purrr::map2(
     features_to_plot,
     percentiles,
-    ~ FeaturePlot_scCustom(
-      object,
-      pt.size = pt.size,
-      features = .x,
-      na_cutoff = .y,
-      order = TRUE,
-      raster = FALSE
-    )
+    ~ {
+      if (!is.null(colors)) {
+        FeaturePlot_scCustom(
+          seurat_object = object,
+          pt.size = pt.size,
+          features = .x,
+          na_cutoff = .y,
+          order = TRUE,
+          raster = FALSE,
+          colors_use = colors,
+          na_color = "grey90"
+        )
+      } else {
+        FeaturePlot_scCustom(
+          seurat_object = object,
+          pt.size = pt.size,
+          features = .x,
+          na_cutoff = .y,
+          order = TRUE,
+          raster = FALSE
+        )
+      }
+    }
   )
   
   p_scaled_wrapped <- patchwork::wrap_plots(plots, ncol = n_col)
@@ -460,6 +483,7 @@ prepare_h5ad <- function(
 #'   in inches for each density plot panel. Default is `c(4, 4)`.
 #' @param max_per_row Integer specifying the maximum number of plots per row.
 #'   Used to determine the number of columns in multi-panel figures.
+#' @param colors the color for the densest area. If NULL, use inferno by default.
 #'
 #' @return A single character string containing executable Python code.
 #'   This code can be passed directly to `reticulate::py_run_string()`.
@@ -494,23 +518,35 @@ prepare_h5ad <- function(
 #'
 #' @export
 density_plot <- function(file_name, density_specs,
-                                       base_figsize = c(4, 4),
-                                       max_per_row = 4) {
+                         base_figsize = c(4, 4),
+                         max_per_row = 4,
+                         color = NULL) {  # allow NULL
   code_blocks <- c(
     "import scanpy as sc",
     "import matplotlib.pyplot as plt",
+    "from matplotlib.colors import LinearSegmentedColormap",
     glue::glue("adata = sc.read_h5ad('{file_name}')")
   )
   
   for (meta_col in names(density_specs)) {
     groups <- density_specs[[meta_col]]$order
-    # ncols <- ceiling(length(groups) / max_per_row)
     ncols <- ifelse(length(groups) < max_per_row, length(groups), max_per_row)
     
     fig_width <- base_figsize[1]
     fig_height <- base_figsize[2]
     
+    if (!is.null(color)) {
+      # Use custom gradient
+      cmap_code <- glue::glue("my_cmap = LinearSegmentedColormap.from_list('grey_to_custom', ['lightgrey', '{color}'])")
+      color_map_arg <- "color_map=my_cmap"
+    } else {
+      # Use inferno
+      cmap_code <- ""
+      color_map_arg <- "color_map='inferno'"
+    }
+    
     code_block <- glue::glue("
+{cmap_code}
 sc.tl.embedding_density(adata, basis='umap', groupby='{meta_col}')
 with plt.rc_context({{'figure.figsize': ({fig_width}, {fig_height})}}):
     sc.pl.embedding_density(
@@ -518,7 +554,7 @@ with plt.rc_context({{'figure.figsize': ({fig_width}, {fig_height})}}):
         basis='umap',
         groupby='{meta_col}',
         bg_dotsize=20,
-        color_map='inferno',
+        {color_map_arg},
         fg_dotsize=80,
         ncols={ncols},
         group={jsonlite::toJSON(groups, auto_unbox=TRUE)},
@@ -527,6 +563,7 @@ with plt.rc_context({{'figure.figsize': ({fig_width}, {fig_height})}}):
 plt.savefig('density_{meta_col}.png', bbox_inches='tight', dpi=300)
 plt.close('all')
 ")
+    
     code_blocks <- c(code_blocks, code_block)
   }
   
@@ -534,6 +571,7 @@ plt.close('all')
   
   return(paste(code_blocks, collapse = "\n"))
 }
+
 
 
 #' Create Volcano Plot from Differential Expression Analysis

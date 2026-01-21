@@ -4,7 +4,13 @@
 \alias{density_plot}
 \title{Generate Python Code for Scanpy UMAP Density Plots}
 \usage{
-density_plot(file_name, density_specs, base_figsize = c(4, 4), max_per_row = 4)
+density_plot(
+  file_name,
+  density_specs,
+  base_figsize = c(4, 4),
+  max_per_row = 4,
+  color = NULL
+)
 }
 \arguments{
 \item{file_name}{Character string. Path to the \code{.h5ad} file that contains
@@ -19,6 +25,8 @@ in inches for each density plot panel. Default is \code{c(4, 4)}.}
 
 \item{max_per_row}{Integer specifying the maximum number of plots per row.
 Used to determine the number of columns in multi-panel figures.}
+
+\item{colors}{the color for the densest area. If NULL, use inferno by default.}
 }
 \value{
 A single character string containing executable Python code.

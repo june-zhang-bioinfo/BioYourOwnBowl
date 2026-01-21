@@ -12,6 +12,7 @@ heatmap_cell_level(
   split_by_cluster = T,
   cluster_rows = F,
   cluster_columns = F,
+  downsample = FALSE,
   file_name = NULL,
   zlim = c(-2, 2),
   width = 6,
@@ -35,6 +36,9 @@ heatmap_cell_level(
 \item{cluster_rows}{Logical. Whether to cluster rows (genes) in the heatmap (default = FALSE).}
 
 \item{cluster_columns}{Logical. Whether to cluster columns (cells) in the heatmap (default = FALSE).}
+
+\item{downsample}{Logical or numeric. If \code{TRUE}, downsamples to the smallest group size.
+If numeric, downsamples each group to that number of cells (default = FALSE).}
 
 \item{file_name}{Character. File name for the saved heatmap PNG.
 If \code{NULL}, defaults to \code{"<cluster>_heatmap.png"}.}

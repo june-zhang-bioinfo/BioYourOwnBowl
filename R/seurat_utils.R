@@ -827,6 +827,8 @@ clustering <- function(
 #' @param split_by_cluster Logical. If \code{TRUE}, splits the heatmap by cluster (default = TRUE).
 #' @param cluster_rows Logical. Whether to cluster rows (genes) in the heatmap (default = FALSE).
 #' @param cluster_columns Logical. Whether to cluster columns (cells) in the heatmap (default = FALSE).
+#' @param downsample Logical or numeric. If \code{TRUE}, downsamples to the smallest group size.
+#'   If numeric, downsamples each group to that number of cells (default = FALSE).
 #' @param file_name Character. File name for the saved heatmap PNG.
 #'   If \code{NULL}, defaults to \code{"<cluster>_heatmap.png"}.
 #' @param zlim Numeric vector of length 2 specifying limits for Z-score color scale (default = c(-2, 2)).
@@ -844,38 +846,70 @@ heatmap_cell_level <- function(object,
                                split_by_cluster = T,
                                cluster_rows = F,
                                cluster_columns = F,
+                               downsample = FALSE,
                                file_name = NULL,
                                zlim = c(-2, 2),
                                width = 6,
                                height = NULL,
                                fontsize = 3,
                                res = 300) {
-
+  
   meta <- object@meta.data
   meta[[idents]] <- factor(meta[[idents]], levels = sort(unique(meta[[idents]])))
-
+  
   if (inherits(features, "character")) {
     genes_to_plot <- features
-  }else{
+  } else {
     genes_to_plot <- features$gene
   }
+  
   obj_hm <- ScaleData(object, features = genes_to_plot)
-
   mat <- GetAssayData(obj_hm, layer = "scale.data")
   mat <- mat[intersect(genes_to_plot, rownames(mat)), ]
   mat <- mat[, rownames(meta)]
   mat <- mat[rowSums(mat != 0) > 0, ]
-
+  
+  # Downsampling logic
+  if (downsample != FALSE) {
+    group_ids <- meta[[idents]]
+    group_sizes <- table(group_ids)
+    
+    if (is.logical(downsample) && downsample == TRUE) {
+      # Downsample to smallest group size
+      target_n <- min(group_sizes)
+      message("Downsampling each group to ", target_n, " cells (smallest group size)")
+    } else if (is.numeric(downsample)) {
+      # Downsample to specified number
+      target_n <- downsample
+      message("Downsampling each group to ", target_n, " cells")
+    }
+    
+    # Sample cells from each group
+    set.seed(123)  # For reproducibility
+    sampled_cells <- unlist(lapply(levels(group_ids), function(grp) {
+      cells_in_group <- rownames(meta)[group_ids == grp]
+      if (length(cells_in_group) <= target_n) {
+        return(cells_in_group)
+      } else {
+        return(sample(cells_in_group, target_n))
+      }
+    }))
+    
+    # Subset matrix and metadata
+    mat <- mat[, sampled_cells]
+    meta <- meta[sampled_cells, ]
+  }
+  
   if(is.null(height)) {
     n_genes <- nrow(mat)
     height <- 8 + (n_genes - 120) * (2 / 50)
     height <- max(height, 6)
     message("Automatically calculated height: ", round(height, 2), " inches for ", n_genes, " genes")
   }
-
+  
   group_colors <- colors[1:length(unique(meta[[idents]]))]
   names(group_colors) <- unique(meta[[idents]])
-
+  
   col_anno <- ComplexHeatmap::HeatmapAnnotation(
     Group = meta[[idents]],
     col = list(
@@ -883,14 +917,13 @@ heatmap_cell_level <- function(object,
     ),
     annotation_name_side = "left"
   )
-
+  
   col_fun <- circlize::colorRamp2(
     breaks = c(zlim[1], 0, zlim[2]),
     colors = c("blue", "white", "red")
   )
-
+  
   if(split_by_cluster == T){
-    
     p <- ComplexHeatmap::Heatmap(
       mat,
       name = "Expression",
@@ -906,7 +939,7 @@ heatmap_cell_level <- function(object,
       row_names_gp = grid::gpar(fontsize = fontsize),
       heatmap_legend_param = list(title = "Z-score")
     )
-  }else{
+  } else {
     p <- ComplexHeatmap::Heatmap(
       mat,
       name = "Expression",
