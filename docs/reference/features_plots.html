@@ -78,6 +78,7 @@ Saves both a scaled and an original version of the plot as PNGs.</p>
 <span>  base_width <span class="op">=</span> <span class="fl">1000</span>,</span>
 <span>  base_height <span class="op">=</span> <span class="fl">1000</span>,</span>
 <span>  percentile <span class="op">=</span> <span class="fl">0.9</span>,</span>
+<span>  colors <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  file_name <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -112,6 +113,11 @@ Saves both a scaled and an original version of the plot as PNGs.</p>
 
 <dt id="arg-percentile">percentile<a class="anchor" aria-label="anchor" href="#arg-percentile"></a></dt>
 <dd><p>The percentile (between 0 and 1) of feature values to be shown. The higher the percentile, the sharper the feature. Default is 0.9.</p></dd>
+
+
+<dt id="arg-colors">colors<a class="anchor" aria-label="anchor" href="#arg-colors"></a></dt>
+<dd><p>Character vector of colors for the gradient scale. If NULL, uses FeaturePlot_scCustom default colors.
+The first color will automatically be used as the NA color. Default is NULL.</p></dd>
 
 
 <dt id="arg-file-name">file_name<a class="anchor" aria-label="anchor" href="#arg-file-name"></a></dt>

@@ -76,6 +76,7 @@ with custom colors for clusters. Saves the heatmap as a PNG file.</p>
 <span>  split_by_cluster <span class="op">=</span> <span class="cn">T</span>,</span>
 <span>  cluster_rows <span class="op">=</span> <span class="cn">F</span>,</span>
 <span>  cluster_columns <span class="op">=</span> <span class="cn">F</span>,</span>
+<span>  downsample <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  file_name <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  zlim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">2</span>, <span class="fl">2</span><span class="op">)</span>,</span>
 <span>  width <span class="op">=</span> <span class="fl">6</span>,</span>
@@ -116,6 +117,11 @@ with custom colors for clusters. Saves the heatmap as a PNG file.</p>
 
 <dt id="arg-cluster-columns">cluster_columns<a class="anchor" aria-label="anchor" href="#arg-cluster-columns"></a></dt>
 <dd><p>Logical. Whether to cluster columns (cells) in the heatmap (default = FALSE).</p></dd>
+
+
+<dt id="arg-downsample">downsample<a class="anchor" aria-label="anchor" href="#arg-downsample"></a></dt>
+<dd><p>Logical or numeric. If <code>TRUE</code>, downsamples to the smallest group size.
+If numeric, downsamples each group to that number of cells (default = FALSE).</p></dd>
 
 
 <dt id="arg-file-name">file_name<a class="anchor" aria-label="anchor" href="#arg-file-name"></a></dt>

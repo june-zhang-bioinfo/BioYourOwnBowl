@@ -74,7 +74,13 @@ processed in Python using <code>scanpy</code>.</p>
     </div>
 
     <div id="ref-usage">
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">density_plot</span><span class="op">(</span><span class="va">file_name</span>, <span class="va">density_specs</span>, base_figsize <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">4</span>, <span class="fl">4</span><span class="op">)</span>, max_per_row <span class="op">=</span> <span class="fl">4</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">density_plot</span><span class="op">(</span></span>
+<span>  <span class="va">file_name</span>,</span>
+<span>  <span class="va">density_specs</span>,</span>
+<span>  base_figsize <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">4</span>, <span class="fl">4</span><span class="op">)</span>,</span>
+<span>  max_per_row <span class="op">=</span> <span class="fl">4</span>,</span>
+<span>  color <span class="op">=</span> <span class="cn">NULL</span></span>
+<span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div id="arguments">
@@ -100,6 +106,10 @@ in inches for each density plot panel. Default is <code>c(4, 4)</code>.</p></dd>
 <dt id="arg-max-per-row">max_per_row<a class="anchor" aria-label="anchor" href="#arg-max-per-row"></a></dt>
 <dd><p>Integer specifying the maximum number of plots per row.
 Used to determine the number of columns in multi-panel figures.</p></dd>
+
+
+<dt id="arg-colors">colors<a class="anchor" aria-label="anchor" href="#arg-colors"></a></dt>
+<dd><p>the color for the densest area. If NULL, use inferno by default.</p></dd>
 
 </dl></div>
     <div id="value">
