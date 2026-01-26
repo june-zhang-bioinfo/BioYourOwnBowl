@@ -31,6 +31,17 @@ dependencies with default library.
 You can install the development version of BioYourOwnBowl from
 [GitHub](https://github.com/june-zhang-bioinfo/BioYourOwnBowl) with:
 
+### Quick install (recommended):
+
+1.  Download install.R
+2.  In your RStudio, run
+
+``` r
+source("~/Downloads/install.R")  # Or wherever you saved it
+```
+
+If quick install fails, do it manually:
+
 ``` r
 # install.packages("remotes")
 test_lib <- "~/R/bioyourownbowl_library"
@@ -49,74 +60,81 @@ remotes::install_github("kevinblighe/EnhancedVolcano", lib = test_lib)
 
 # install BioYourOwnBowl
 remotes::install_github("june-zhang-bioinfo/BioYourOwnBowl", lib = test_lib)
+```
 
+After installation, indicating the library path before each use:
 
-# Or use Quick install (recommended):
-source("https://raw.githubusercontent.com/june-zhang-bioinfo/BioYourOwnBowl/main/install.R")
-
-
-# Step 2: Use (every R session)
+``` r
 .libPaths(c("~/R/bioyourownbowl_library", .libPaths()))
 library(BioYourOwnBowl)
 ```
 
+## Documentation
 
+For a complete example workflow with detailed explanations, see
+[vignettes](https://june-zhang-bioinfo.github.io/BioYourOwnBowl/).
 
-    ## Documentation
+## Key Features
 
-    For a complete example workflow with detailed explanations, see [vignettes](https://june-zhang-bioinfo.github.io/BioYourOwnBowl/).
+- **End-to-end analysis**: define your parameters at once and get all
+  results with one function.
+- **Save parameters and session info automatically**: record how you get
+  here.
+- **Biological inspection**: export variable features and top genes per
+  PC.
+- **Automated function**: low-quality cluster removal, select principal
+  components by elbow plot.
+- **Clustering optimization**: parameter sweeps and save results with
+  desired granularity only.
+- **Advanced visualizations**: cell-level, pseudobulk-level and
+  meta-level heatmaps, 2-dimensional volcano plots, density plot with
+  scanpy, violin plots with pronounced non-zero distribution and
+  statistical test, area proportional venn plots and treemaps.
+- **Interacte with Python**: configure python environment and run python
+  code in Rstudio.
+- **cNMF visualization**: top genes per program, programs projection on
+  UMAP, cNMF comparison heatmaps, gene locating.
+- **Batch correction support**: via Harmony.
 
-    ## Key Features
+## Quick Example
 
-    - **End-to-end analysis**: define your parameters at once and get all results with one function.
-    - **Save parameters and session info automatically**: record how you get here.
-    - **Biological inspection**: export variable features and top genes per PC.
-    - **Automated function**: low-quality cluster removal, select principal components by elbow plot.
-    - **Clustering optimization**: parameter sweeps and save results with desired granularity only.
-    - **Advanced visualizations**: cell-level, pseudobulk-level and meta-level heatmaps, 2-dimensional volcano plots, density plot with scanpy, violin plots with pronounced non-zero distribution and statistical test, area proportional venn plots and treemaps.
-    - **Interacte with Python**: configure python environment and run python code in Rstudio.
-    - **cNMF visualization**: top genes per program, programs projection on UMAP, cNMF comparison heatmaps, gene locating.
-    - **Batch correction support**: via Harmony.
+``` r
+library(BioYourOwnBowl)
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(circlize)
+library(grid)
+library(RColorBrewer)
+library(stringr)
+library(grDevices)
+library(stats)
+library(utils)
+library(jsonlite)
+library(Matrix)
+library(ComplexHeatmap)
+library(pheatmap)
+library(scCustomize)
+library(rlang)
+library(matrixStats)
+library(sessioninfo)
+library(yaml)
 
-    ## Quick Example
+# Load example Seurat object
+seurat_obj <- readRDS("path/to/example_seurat.rds")
 
-
-    ``` r
-    library(BioYourOwnBowl)
-    library(Seurat)
-    library(ggplot2)
-    library(dplyr)
-    library(tidyr)
-    library(tibble)
-    library(circlize)
-    library(grid)
-    library(RColorBrewer)
-    library(stringr)
-    library(grDevices)
-    library(stats)
-    library(utils)
-    library(jsonlite)
-    library(Matrix)
-    library(ComplexHeatmap)
-    library(pheatmap)
-    library(scCustomize)
-    library(rlang)
-    library(matrixStats)
-    library(sessioninfo)
-    library(yaml)
-
-    # Load example Seurat object
-    seurat_obj <- readRDS("path/to/example_seurat.rds")
-
-    # Run a minimal pipeline
-    seurat_obj <- optimize_single_cell(
-      object = seurat_obj,
-      vf.method = "vst",
-      nfeatures = 2000,
-      clusters_min = 5, 
-      clusters_max = 12,
-      out_dir = "results/"
-    )
+# Run a minimal pipeline
+seurat_obj <- optimize_single_cell(
+  object = seurat_obj,
+  vf.method = "vst",
+  nfeatures = 2000,
+  clusters_min = 5, 
+  clusters_max = 12,
+  out_dir = "results/"
+)
+```
 
 ## Main Functions
 
