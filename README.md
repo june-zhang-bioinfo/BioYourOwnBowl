@@ -22,84 +22,105 @@ assemble and customize their own analysis pipeline.
 
 ## Installation
 
+This package is strict with dependencies versions for reproducibilty and
+compatibility. Therefore, a new library path is ideal to separate the
+package with user’s existing packages. This makes sure the independence
+of BioYourOwnBowl and minimizes the installation by using shared
+dependencies with default library.
+
 You can install the development version of BioYourOwnBowl from
 [GitHub](https://github.com/june-zhang-bioinfo/BioYourOwnBowl) with:
 
 ``` r
 # install.packages("remotes")
-remotes::install_github("june-zhang-bioinfo/BioYourOwnBowl")
-```
+test_lib <- "~/R/bioyourownbowl_library"
+if (dir.exists(test_lib)) unlink(test_lib, recursive = TRUE)
+dir.create(test_lib, recursive = TRUE)
 
-## Documentation
+# Now set library paths
+.libPaths(test_lib)
 
-For a complete example workflow with detailed explanations, see
-[vignettes](https://june-zhang-bioinfo.github.io/BioYourOwnBowl/).
+# install GitHub-specific dependencies
+remotes::install_github("satijalab/seurat@v5.1.0", lib = test_lib)
+remotes::install_github("tidyverse/ggplot2@v3.5.2", lib = test_lib)
+remotes::install_github("settylab/convert2anndata", lib = test_lib)
+remotes::install_github("jokergoo/ComplexHeatmap", lib = test_lib)
+remotes::install_github("kevinblighe/EnhancedVolcano", lib = test_lib)
 
-## Key Features
+# install BioYourOwnBowl
+remotes::install_github("june-zhang-bioinfo/BioYourOwnBowl", lib = test_lib)
 
-- **End-to-end analysis**: define your parameters at once and get all
-  results with one function.
-- **Save parameters and session info automatically**: record how you get
-  here.
-- **Biological inspection**: export variable features and top genes per
-  PC.
-- **Automated function**: low-quality cluster removal, select principal
-  components by elbow plot.
-- **Clustering optimization**: parameter sweeps and save results with
-  desired granularity only.
-- **Advanced visualizations**: cell-level, pseudobulk-level and
-  meta-level heatmaps, 2-dimensional volcano plots, density plot with
-  scanpy, violin plots with pronounced non-zero distribution and
-  statistical test, area proportional venn plots and treemaps.
-- **Interact with Python**: configure python environment and run python
-  in Rstudio.
-- **cNMF visualization**: top genes per program, programs projection on
-  UMAP, cNMF comparison heatmaps, gene locating.
-- **Batch correction support**: via Harmony.
 
-## Quick Example
+# Or use Quick install (recommended):
+source("https://raw.githubusercontent.com/june-zhang-bioinfo/BioYourOwnBowl/main/install.R")
 
-``` r
+
+# Step 2: Use (every R session)
+.libPaths(c("~/R/bioyourownbowl_library", .libPaths()))
 library(BioYourOwnBowl)
-library(Seurat)
-library(ggplot2)
-library(dplyr)
-library(tidyr)
-library(tibble)
-library(circlize)
-library(grid)
-library(RColorBrewer)
-library(stringr)
-library(grDevices)
-library(stats)
-library(utils)
-library(jsonlite)
-library(Matrix)
-library(ComplexHeatmap)
-library(pheatmap)
-library(scCustomize)
-library(rlang)
-library(matrixStats)
-library(sessioninfo)
-library(yaml)
-
-# Load example Seurat object
-seurat_obj <- readRDS("path/to/example_seurat.rds")
-
-# Run a minimal pipeline
-seurat_obj <- optimize_single_cell(
-  object = seurat_obj,
-  vf.method = "vst",
-  nfeatures = 2000,
-  clusters_min = 5, 
-  clusters_max = 12,
-  out_dir = "results/"
-)
 ```
+
+
+
+    ## Documentation
+
+    For a complete example workflow with detailed explanations, see [vignettes](https://june-zhang-bioinfo.github.io/BioYourOwnBowl/).
+
+    ## Key Features
+
+    - **End-to-end analysis**: define your parameters at once and get all results with one function.
+    - **Save parameters and session info automatically**: record how you get here.
+    - **Biological inspection**: export variable features and top genes per PC.
+    - **Automated function**: low-quality cluster removal, select principal components by elbow plot.
+    - **Clustering optimization**: parameter sweeps and save results with desired granularity only.
+    - **Advanced visualizations**: cell-level, pseudobulk-level and meta-level heatmaps, 2-dimensional volcano plots, density plot with scanpy, violin plots with pronounced non-zero distribution and statistical test, area proportional venn plots and treemaps.
+    - **Interacte with Python**: configure python environment and run python code in Rstudio.
+    - **cNMF visualization**: top genes per program, programs projection on UMAP, cNMF comparison heatmaps, gene locating.
+    - **Batch correction support**: via Harmony.
+
+    ## Quick Example
+
+
+    ``` r
+    library(BioYourOwnBowl)
+    library(Seurat)
+    library(ggplot2)
+    library(dplyr)
+    library(tidyr)
+    library(tibble)
+    library(circlize)
+    library(grid)
+    library(RColorBrewer)
+    library(stringr)
+    library(grDevices)
+    library(stats)
+    library(utils)
+    library(jsonlite)
+    library(Matrix)
+    library(ComplexHeatmap)
+    library(pheatmap)
+    library(scCustomize)
+    library(rlang)
+    library(matrixStats)
+    library(sessioninfo)
+    library(yaml)
+
+    # Load example Seurat object
+    seurat_obj <- readRDS("path/to/example_seurat.rds")
+
+    # Run a minimal pipeline
+    seurat_obj <- optimize_single_cell(
+      object = seurat_obj,
+      vf.method = "vst",
+      nfeatures = 2000,
+      clusters_min = 5, 
+      clusters_max = 12,
+      out_dir = "results/"
+    )
 
 ## Main Functions
 
-### Core Pipeline
+### Core Workflow
 
 - `optimize_single_cell()` - Full automated pipeline
 
@@ -169,6 +190,7 @@ The `optimize_single_cell()` function generates:
 - `PCs_top-genes.csv` - Top genes per principal component
 - `dimplot.pdf` - Dimplots showing clustering results
 - `k*_r*_barplot.png` - Cluster distribution plots
+- `k*_r*_dge.csv` - DGE results
 - `k*_r*_dotplot.pdf` - Dot plots for each clustering, including
   selected features and DGE
 - `k*_r*_heatmap.png` - Expression heatmaps for DGE
@@ -184,7 +206,7 @@ The `optimize_single_cell()` function generates:
 
 If you use this package in your research, please cite:
 
-    June Zhang (2025). BioYourOwnBowl: Single-cell RNA-seq Analysis Tools. 
+    June Zhang (2025). BioYourOwnBowl: Single-cell RNA-seq Analysis Toolkits. 
     R package version 0.1.0. https://github.com/june-zhang-bioinfo/BioYourOwnBowl
 
 ## License
