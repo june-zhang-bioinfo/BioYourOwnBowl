@@ -127,15 +127,15 @@ features_plots <- function(object,
 #' @param add_stats Logical indicating whether to add statistical test results to the plot.
 #'   Default is FALSE.
 #' @param test_method Character string specifying the statistical test method. Options are
-#'   "wilcox" (Wilcoxon rank-sum test) or "t.test" (t-test). Default is "wilcox".
+#'   \code{"wilcox.test"} (Wilcoxon rank-sum test, default) or \code{"t.test"} (t-test).
+#'   Tests are run independently per gene.
 #' @param comparisons List of length-2 character vectors specifying pairwise comparisons to test.
 #'   If NULL and add_stats = TRUE, all pairwise comparisons will be performed. Default is NULL.
 #' @param p_adjust_method Character string specifying p-value adjustment method for multiple
-#'   testing. Options include "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none".
-#'   Default is "BH" (Benjamini-Hochberg).
-#' @param symnum_args List of arguments to pass to symnum() for significance symbols.
-#'   Default is list(cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, 1),
-#'                   symbols = c("****", "***", "**", "*", "ns")).
+#'   testing across comparisons within each gene. Options include "holm", "hochberg", "hommel",
+#'   "bonferroni", "BH", "BY", "fdr", "none". Default is "BH" (Benjamini-Hochberg).
+#' @param symnum_args List with \code{cutpoints} and \code{symbols} used to convert p-values
+#'   to significance labels. Default uses: **** p<0.0001, *** p<0.001, ** p<0.01, * p<0.05, ns otherwise.
 #'
 #' @return A ggplot object
 #'
@@ -168,12 +168,10 @@ features_plots <- function(object,
 #'   features = gene_list,
 #'   idents = "cohort_tp",
 #'   groups = c("Chronic Post-DAA", "ACTG Post-DAA", "SR ≥24W-post-resolution"),
-#'   colors = c("Chronic Post-DAA" = "#F8A19FB2",
-#'              "ACTG Post-DAA" = "#2ED9FFB2",
-#'              "SR ≥24W-post-resolution" = "#FEAF16B2"),
+#'   colors = c("#F8A19FB2", "#2ED9FFB2", "#FEAF16B2"),
 #'   add_stats = TRUE,
 #'   comparisons = my_comparisons,
-#'   test_method = "wilcox",
+#'   test_method = "wilcox.test",
 #'   file_name = "expression_violin.png"
 #' )
 #' }
@@ -190,20 +188,20 @@ violin_plots <- function(object,
                          height = NULL,
                          ncol = 5,
                          add_stats = FALSE,
-                         test_method = "wilcox",
+                         test_method = "wilcox.test",
                          comparisons = NULL,
                          p_adjust_method = "BH",
                          symnum_args = list(
                            cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, 1),
-                           symbols = c("****", "***", "**", "*", "ns")
+                           symbols   = c("****", "***", "**", "*", "ns")
                          )) {
   
-  # Set active identity
-  levels <- object[[idents]] %>% unlist() %>% as.character() %>% stringr::str_sort() %>% unique()
-  Idents(object) <- object[[idents]] %>% unlist() %>% as.character()
+  # 1. Set active identity
+  levels <- object[[idents]] %>% unlist() %>% as.character() %>% na.omit() %>%
+    stringr::str_sort() %>% unique()
   Idents(object) <- factor(object[[idents]] %>% unlist() %>% as.character(), levels = levels)
   
-  # Subset cells if groups specified
+  # 2. Subset cells if groups specified
   if (!is.null(groups)) {
     cells_to_use <- Seurat::WhichCells(object, idents = groups)
   } else {
@@ -211,93 +209,159 @@ violin_plots <- function(object,
     groups <- levels(Idents(object))
   }
   
-  # Fetch expression data
+  # 3. Fetch expression data
   features <- intersect(features, c(rownames(object), colnames(object@meta.data)))
-  expr_mat <- Seurat::FetchData(object, vars = features, cells = cells_to_use, layer = "data")
-  expr_mat$ident <- Seurat::Idents(object)[cells_to_use]
+  expr_mat  <- Seurat::FetchData(object, vars = features, cells = cells_to_use, layer = "data")
+  expr_mat$ident <- Seurat::Idents(object)[rownames(expr_mat)]
   
-  # Convert to long format
+  # 4. Convert to long format and drop NAs
   expr_long <- expr_mat %>%
-    rownames_to_column(var = "cell") %>%
-    pivot_longer(cols = all_of(features), names_to = "gene", values_to = "expression")
+    tibble::rownames_to_column(var = "cell") %>%
+    tidyr::pivot_longer(cols = dplyr::all_of(features), names_to = "gene", values_to = "expression") %>%
+    dplyr::filter(!is.na(ident), !is.na(expression))
   
-  # Set factor levels
+  # 5. Set factor levels
   expr_long$ident <- factor(expr_long$ident, levels = groups)
-  expr_long$gene <- factor(expr_long$gene, levels = unique(expr_long$gene))
+  expr_long$gene  <- factor(expr_long$gene,  levels = features)
   
-  # Calculate dynamic height if not provided
+  # 6. Warn about dropped NAs
+  n_na <- sum(is.na(expr_mat$ident) | rowSums(is.na(expr_mat[, features, drop = FALSE])) > 0)
+  if (n_na > 0) message(n_na, " cell(s) with NA ident or expression values were removed.")
+  
+  # 7. Subset non-zero expression for violin shape only
+  data_for_violin <- dplyr::filter(expr_long, expression > 0)
+  
+  # 8. Dynamic height
   if (is.null(height)) {
-    n_genes <- length(features)
-    n_rows <- ceiling(n_genes / ncol)
-    # Add extra height if statistics are being added
-    height_per_row <- ifelse(add_stats, 3.5, 3)
-    height <- max(3, n_rows * height_per_row)
+    n_rows          <- ceiling(length(features) / ncol)
+    height_per_row  <- ifelse(add_stats, 3.5, 3)
+    height          <- max(3, n_rows * height_per_row)
   }
   
-  # Generate all pairwise comparisons if not provided
-  if (add_stats && is.null(comparisons)) {
-    if (length(groups) > 1) {
-      comparisons <- utils::combn(groups, 2, simplify = FALSE)
-    } else {
-      warning("Cannot perform statistical tests with only one group")
+  # 9. Generate all pairwise comparisons if not provided
+  if (add_stats) {
+    if (length(groups) < 2) {
+      warning("Cannot perform statistical tests with only one group. Disabling stats.")
       add_stats <- FALSE
+    } else if (is.null(comparisons)) {
+      comparisons <- utils::combn(groups, 2, simplify = FALSE)
     }
   }
   
-  # Create plot
-  p <- ggplot(expr_long, aes(x = ident, y = expression, color = ident)) +
-    geom_violin(
-      data = subset(expr_long, expression >= 0),
-      trim = TRUE,
-      scale = "count",
-      adjust = 1,
-      alpha = 0.7
-    ) +
-    geom_dotplot(
-      data = expr_long,
-      binaxis = 'y',
-      stackdir = 'center',
-      dotsize = 0.35,
-      binwidth = binwidth,
-      method = "histodot"
-    ) +
-    geom_boxplot(
-      width = 0.15,
-      outlier.shape = NA,
-      alpha = 0.3,
-      color = "black",
-      fill = "white"
-    ) +
-    facet_wrap(~ gene, scales = "free_y", ncol = ncol) +
-    theme_minimal() +
-    theme(
-      axis.text.x = element_text(angle = 45, hjust = 1, size = 9),
-      strip.text = element_text(size = 9),
-      legend.position = "none",
-      panel.background = element_rect(fill = "white", color = NA),
-      plot.background = element_rect(fill = "white", color = NA)
-    ) +
-    labs(x = "Identity", y = "Expression")
-  
-  # Add statistical comparisons
+  # 10. Compute per-gene, per-comparison p-values manually
   if (add_stats) {
-    p <- p + ggpubr::stat_compare_means(
-      comparisons = comparisons,
-      method = test_method,
-      label = "p.signif",
-      symnum.args = symnum_args,
-      p.adjust.method = p_adjust_method
+    test_fn <- match.fun(test_method)
+    
+    stat_df <- purrr::map_dfr(features, function(g) {
+      gene_data <- dplyr::filter(expr_long, gene == g)
+      
+      # Raw p-value for each comparison
+      raw_p <- sapply(comparisons, function(comp) {
+        x <- dplyr::filter(gene_data, ident == comp[1])$expression
+        y <- dplyr::filter(gene_data, ident == comp[2])$expression
+        if (length(x) < 2 || length(y) < 2) return(NA_real_)
+        tryCatch(test_fn(x, y)$p.value, error = function(e) NA_real_)
+      })
+      
+      # Adjust p-values across comparisons within this gene
+      adj_p <- p.adjust(raw_p, method = p_adjust_method)
+      
+      # Convert to significance symbols
+      syms <- symnum(
+        adj_p,
+        cutpoints  = symnum_args$cutpoints,
+        symbols    = symnum_args$symbols,
+        na         = "ns",
+        corr       = FALSE
+      ) %>% as.character()
+      
+      # Y positions: stack brackets above the max expression for this gene
+      y_max   <- max(gene_data$expression, na.rm = TRUE)
+      y_range <- diff(range(gene_data$expression, na.rm = TRUE))
+      step    <- y_range * 0.12
+      
+      data.frame(
+        gene        = g,
+        xmin        = sapply(comparisons, `[`, 1),
+        xmax        = sapply(comparisons, `[`, 2),
+        p_val       = raw_p,
+        p_adj       = adj_p,
+        annotations = syms,
+        y_position  = y_max + step * seq_along(comparisons),
+        stringsAsFactors = FALSE
+      )
+    })
+    
+    # Only keep significant or all? Keep all so user sees "ns" too
+    # Filter out NA tests
+    stat_df <- dplyr::filter(stat_df, !is.na(p_val))
+  }
+  
+  # 11. Build plot
+  p <- ggplot2::ggplot(expr_long, ggplot2::aes(x = ident, y = expression, color = ident)) +
+    ggplot2::geom_violin(
+      data    = data_for_violin,
+      trim    = TRUE,
+      scale   = "count",
+      adjust  = 1,
+      alpha   = 0.7,
+      na.rm   = TRUE
+    ) +
+    ggplot2::geom_dotplot(
+      data      = expr_long,
+      binaxis   = 'y',
+      stackdir  = 'center',
+      dotsize   = 0.35,
+      binwidth  = binwidth,
+      method    = "histodot",
+      na.rm     = TRUE
+    ) +
+    ggplot2::geom_boxplot(
+      width         = 0.15,
+      outlier.shape = NA,
+      alpha         = 0.3,
+      color         = "black",
+      fill          = "white",
+      na.rm         = TRUE
+    ) +
+    ggplot2::facet_wrap(~ gene, scales = "free_y", ncol = ncol) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(
+      axis.text.x      = ggplot2::element_text(angle = 45, hjust = 1, size = 9),
+      strip.text       = ggplot2::element_text(size = 9),
+      legend.position  = "none",
+      panel.background = ggplot2::element_rect(fill = "white", color = NA),
+      plot.background  = ggplot2::element_rect(fill = "white", color = NA)
+    ) +
+    ggplot2::labs(x = "Identity", y = "Expression")
+  
+  # 12. Add per-gene significance brackets via ggsignif
+  if (add_stats) {
+    p <- p + ggsignif::geom_signif(
+      data        = stat_df,
+      mapping     = ggplot2::aes(
+        xmin        = xmin,
+        xmax        = xmax,
+        annotations = annotations,
+        y_position  = y_position
+      ),
+      manual      = TRUE,
+      inherit.aes = FALSE,
+      tip_length  = 0.01,
+      textsize    = 3,
+      size        = 0.3
     )
   }
   
-  # Apply custom colors if provided
+  # 13. Apply colors (positional, assigned to groups in order)
   if (!is.null(colors)) {
-    p <- p + scale_color_manual(values = colors)
+    named_colors <- setNames(colors[seq_along(groups)], groups)
+    p <- p + ggplot2::scale_color_manual(values = named_colors, na.translate = FALSE)
   }
   
-  # Save plot if filename provided
+  # 14. Save if requested
   if (!is.null(file_name)) {
-    ggsave(file_name, plot = p, height = height, width = width)
+    ggplot2::ggsave(file_name, plot = p, height = height, width = width)
   }
   
   return(p)
@@ -449,9 +513,9 @@ prepare_h5ad <- function(
     assay <- Seurat::DefaultAssay(cnmf)
   }
   
-  cnmf@assays[[assay]]$counts <- cnmf@assays[[assay]]$data
-  cnmf@assays[[assay]]$data <- NULL
-  cnmf@assays[[assay]]$scale.data <- NULL
+  # cnmf@assays[[assay]]$counts <- cnmf@assays[[assay]]$data
+  # cnmf@assays[[assay]]$data <- NULL
+  # cnmf@assays[[assay]]$scale.data <- NULL
   
   cnmf@meta.data <- subset(cnmf@meta.data, select = metadata_vars)
   
@@ -466,7 +530,7 @@ prepare_h5ad <- function(
 
 
 
-#' Generate Python Code for Scanpy UMAP Density Plots
+#' Run Scanpy UMAP Density Plots
 #'
 #' This function generates a block of Python code that, when executed,
 #' produces UMAP density plots for specified metadata variables in an
@@ -483,44 +547,41 @@ prepare_h5ad <- function(
 #'   in inches for each density plot panel. Default is `c(4, 4)`.
 #' @param max_per_row Integer specifying the maximum number of plots per row.
 #'   Used to determine the number of columns in multi-panel figures.
-#' @param colors the color for the densest area. If NULL, use inferno by default.
+#' @param color Character vector of colors. If \code{NULL}, uses inferno by default.
+#'   If a single color is provided, the colormap runs from the 20% point of a
+#'   lightgrey-to-color gradient (as the zero-density baseline) to the color itself.
 #'
 #' @return A single character string containing executable Python code.
 #'   This code can be passed directly to `reticulate::py_run_string()`.
 #'
-#' @details
-#' The generated Python code will:
-#' \enumerate{
-#'   \item Import required libraries (`scanpy` and `matplotlib`).
-#'   \item Read the `.h5ad` file into an AnnData object.
-#'   \item For each metadata variable in \code{density_specs}, compute and plot
-#'         UMAP density maps using `scanpy.tl.embedding_density()` and
-#'         `scanpy.pl.embedding_density()`.
-#'   \item Save each density plot to a PNG file named
-#'         \code{density_<meta_col>.png}.
-#' }
-#'
-#' @examples
-#' \dontrun{
-#' density_plot_specs <- list(
-#'   cohort_tp = list(order = c("Chronic Pre-DAA", "Chronic Post-DAA")),
-#'   protein_group = list(order = c("Group1", "Group2"))
-#' )
-#'
-#' py_code <- density_plot(
-#'   file_name = "mydata.h5ad",
-#'   density_specs = density_plot_specs
-#' )
-#'
-#' }
-#'
-#' @seealso \code{\link[reticulate]{py_run_string}}
-#'
 #' @export
 density_plot <- function(file_name, density_specs,
                          base_figsize = c(4, 4),
-                         max_per_row = 4,
-                         color = NULL) {  # allow NULL
+                         max_per_row  = 4,
+                         color        = NULL) {
+  
+  # --- Build colormap colors vector ---
+  if (!is.null(color)) {
+    if (length(color) > 1) {
+      stop("'color' must be a single color string. Provide one color or NULL to use inferno.")
+    }
+    {
+      # Derive baseline from 20% of lightgrey -> color gradient
+      gradient_fn    <- grDevices::colorRampPalette(c("lightgrey", color))
+      baseline_color <- gradient_fn(100)[20]
+      cmap_colors    <- c(baseline_color, color)
+    }
+    # Format as Python list string
+    colors_py  <- paste0(
+      "[", paste0("'", cmap_colors, "'", collapse = ", "), "]"
+    )
+    cmap_code      <- glue::glue("my_cmap = LinearSegmentedColormap.from_list('custom_cmap', {colors_py})")
+    color_map_arg  <- "color_map=my_cmap"
+  } else {
+    cmap_code     <- ""
+    color_map_arg <- "color_map='inferno'"
+  }
+  
   code_blocks <- c(
     "import scanpy as sc",
     "import matplotlib.pyplot as plt",
@@ -529,21 +590,10 @@ density_plot <- function(file_name, density_specs,
   )
   
   for (meta_col in names(density_specs)) {
-    groups <- density_specs[[meta_col]]$order
-    ncols <- ifelse(length(groups) < max_per_row, length(groups), max_per_row)
-    
-    fig_width <- base_figsize[1]
+    groups     <- density_specs[[meta_col]]$order
+    ncols      <- ifelse(length(groups) < max_per_row, length(groups), max_per_row)
+    fig_width  <- base_figsize[1]
     fig_height <- base_figsize[2]
-    
-    if (!is.null(color)) {
-      # Use custom gradient
-      cmap_code <- glue::glue("my_cmap = LinearSegmentedColormap.from_list('grey_to_custom', ['lightgrey', '{color}'])")
-      color_map_arg <- "color_map=my_cmap"
-    } else {
-      # Use inferno
-      cmap_code <- ""
-      color_map_arg <- "color_map='inferno'"
-    }
     
     code_block <- glue::glue("
 {cmap_code}
@@ -571,7 +621,6 @@ plt.close('all')
   
   return(paste(code_blocks, collapse = "\n"))
 }
-
 
 
 #' Create Volcano Plot from Differential Expression Analysis
@@ -827,74 +876,72 @@ volcano_plots <- function(object,
 #' This function performs pairwise differential expression analysis between
 #' specified identity groups in a Seurat object, merges results from two
 #' comparisons, classifies genes by directionality and significance, and
-#' visualizes the results as 2D scatter plots of \eqn{log2FC_1} vs. \eqn{log2FC_2}.
+#' visualizes the results as 2D scatter plots of log2FC_1 vs. log2FC_2.
 #'
 #' @param object A \code{Seurat} object containing expression and metadata.
 #' @param comparison_table A data frame specifying pairs of identities to compare.
-#'   Each row should include four columns (e.g., \code{ident1}, \code{ident2},
-#'   \code{ident3}, \code{ident4}) defining two comparisons.
+#'   Each row should include four columns defining two comparisons.
 #' @param output_dir Character. Path to the directory where plots will be saved.
 #'   Defaults to \code{"2dim_log2fc"}.
 #' @param lfc_threshold Numeric. Log2 fold-change threshold used for coloring.
 #'   Default is \code{log2(1.5)}.
 #' @param pval_cutoff Numeric. Adjusted p-value cutoff for significance. Default is 0.05.
-#' @param min.pct Numeric. min.pvt cutoff for FindMarkers. Default is 0.
-#' @param color_palette Named character vector of colors to use for each group.
+#' @param min.pct Numeric. min.pct cutoff for FindMarkers. Default is 0.01.
+#' @param color_palette Named character vector of colors for each of the 8 direction groups.
+#'   Names must be: \code{"x_only_up"}, \code{"x_only_down"}, \code{"y_only_up"},
+#'   \code{"y_only_down"}, \code{"both_up"}, \code{"both_down"},
+#'   \code{"x_up_y_down"}, \code{"x_down_y_up"}.
 #'   If NULL, a default palette will be used.
 #' @param selected_genes Optional character vector of genes to label on the plots.
 #'
-#' @details
-#' For each row in \code{comparison_table}, the function:
-#' \enumerate{
-#'   \item Runs \code{FindMarkers()} twice — once for (\code{ident1} vs. \code{ident2})
-#'         and once for (\code{ident3} vs. \code{ident4}).
-#'   \item Merges results by gene.
-#'   \item Assigns each gene to a color group based on the direction and significance
-#'         of both comparisons.
-#'   \item Plots \code{avg_log2FC_1} vs. \code{avg_log2FC_2} with color-coded points,
-#'         significance thresholds, and labeled selected genes.
-#'   \item Saves the resulting plot as a PNG file.
-#' }
-#'
-#' @return Invisibly returns a list of file paths to the saved plots.
+#' @return Invisibly returns a list of merged data frames per comparison.
 #' @export
-#'
-#' @examples
-#' \dontrun{
-#' df <- read.csv("2dim_log2fc.csv")
-#' user_palette <- c(
-#'   "Brown" = "saddlebrown", "Blue" = "dodgerblue", "LightBlue" = "skyblue",
-#'   "Green" = "darkgreen", "Purple" = "purple", "Orange" = "orange",
-#'   "Pink" = "pink", "LightGreen" = "lightgreen"
-#' )
-#'
-#' double_volcano(object, df, output_dir = "2dim_log2fc",
-#'                lfc_threshold = log2(2), pval_cutoff = 0.01,
-#'                color_palette = user_palette,
-#'                selected_genes = c("CD8A", "PDCD1"))
-#' }
 double_volcano <- function(
     object,
     comparison_table,
-    output_dir = "2dim_log2fc",
-    lfc_threshold = log2(1.5),
-    pval_cutoff = 0.05,
-    min.pct = 0,
-    color_palette = NULL,
-    selected_genes = NULL
-) {
+    output_dir     = "2dim_log2fc",
+    lfc_threshold  = log2(1.5),
+    pval_cutoff    = 0.05,
+    min.pct        = 0.01,
+    color_palette  = NULL,
+    selected_genes = NULL) {
+  
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
   
+  # --- 8 semantic group names, independent of color ---
+  # x_only_up:    sig up in comparison 1 only
+  # x_only_down:  sig down in comparison 1 only
+  # y_only_up:    sig up in comparison 2 only
+  # y_only_down:  sig down in comparison 2 only
+  # both_up:      sig up in both
+  # both_down:    sig down in both
+  # x_up_y_down:  sig up in 1, down in 2
+  # x_down_y_up:  sig down in 1, up in 2
+  
+  default_palette <- c(
+    "x_only_up"   = "blue",
+    "x_only_down" = "darkgreen",
+    "y_only_up"   = "darkred",
+    "y_only_down" = "purple",
+    "both_up"     = "#2ff76e",
+    "both_down"   = "#ed74d5",
+    "x_up_y_down" = "#27c8e8",
+    "x_down_y_up" = "#FFA500"
+  )
+  
   if (is.null(color_palette)) {
-    color_palette <- c(
-      "Brown" = "darkred", "Blue" = "blue", "LightBlue" = "#27c8e8",
-      "Green" = "#008000", "Purple" = "purple", "Orange" = "#FFA500",
-      "Pink" = "#ed74d5", "LightGreen" = "#2ff76e"
-    )
+    color_palette <- default_palette
+  } else {
+    missing_groups <- setdiff(names(default_palette), names(color_palette))
+    if (length(missing_groups) > 0) {
+      warning("Missing groups in color_palette, using defaults for: ",
+              paste(missing_groups, collapse = ", "))
+      color_palette <- c(color_palette, default_palette[missing_groups])
+    }
   }
   
-  # Idents(object) <- object$Cohort_tp_mutation
-  plot_files <- list()
+  Idents(object) <- object$Cohort_tp_mutation
+  plot_files  <- list()
   merged_list <- list()
   
   for (i in seq_len(nrow(comparison_table))) {
@@ -917,25 +964,24 @@ double_volcano <- function(
       dplyr::mutate(
         color_group = dplyr::case_when(
           avg_log2FC_1 < -lfc_threshold & avg_log2FC_2 > lfc_threshold &
-            p_val_adj_1 < pval_cutoff & p_val_adj_2 < pval_cutoff ~ "Orange",
+            p_val_adj_1 < pval_cutoff & p_val_adj_2 < pval_cutoff ~ "x_down_y_up",
           avg_log2FC_1 > lfc_threshold & avg_log2FC_2 < -lfc_threshold &
-            p_val_adj_1 < pval_cutoff & p_val_adj_2 < pval_cutoff ~ "LightBlue",
+            p_val_adj_1 < pval_cutoff & p_val_adj_2 < pval_cutoff ~ "x_up_y_down",
           avg_log2FC_1 < -lfc_threshold & avg_log2FC_2 < -lfc_threshold &
-            p_val_adj_1 < pval_cutoff & p_val_adj_2 < pval_cutoff ~ "Pink",
+            p_val_adj_1 < pval_cutoff & p_val_adj_2 < pval_cutoff ~ "both_down",
           avg_log2FC_1 > lfc_threshold & avg_log2FC_2 > lfc_threshold &
-            p_val_adj_1 < pval_cutoff & p_val_adj_2 < pval_cutoff ~ "LightGreen",
-          avg_log2FC_1 > lfc_threshold & p_val_adj_1 < pval_cutoff ~ "Blue",
-          avg_log2FC_2 > lfc_threshold & p_val_adj_2 < pval_cutoff ~ "Brown",
-          avg_log2FC_1 < -lfc_threshold & p_val_adj_1 < pval_cutoff ~ "Green",
-          avg_log2FC_2 < -lfc_threshold & p_val_adj_2 < pval_cutoff ~ "Purple",
+            p_val_adj_1 < pval_cutoff & p_val_adj_2 < pval_cutoff ~ "both_up",
+          avg_log2FC_1 > lfc_threshold & p_val_adj_1 < pval_cutoff ~ "x_only_up",
+          avg_log2FC_2 > lfc_threshold & p_val_adj_2 < pval_cutoff ~ "y_only_up",
+          avg_log2FC_1 < -lfc_threshold & p_val_adj_1 < pval_cutoff ~ "x_only_down",
+          avg_log2FC_2 < -lfc_threshold & p_val_adj_2 < pval_cutoff ~ "y_only_down",
           TRUE ~ "Other"
         )
       )
     
-    # store this merged result with a descriptive name
     merged_list[[paste0(c1, " vs ", c2)]] <- merged
     
-    df_gray <- dplyr::filter(merged, color_group == "Other")
+    df_gray  <- dplyr::filter(merged, color_group == "Other")
     df_color <- dplyr::filter(merged, color_group != "Other")
     
     if (nrow(df_color) == 0) {
@@ -943,18 +989,29 @@ double_volcano <- function(
       next
     }
     
-    group_counts <- dplyr::count(df_color, color_group)
+    group_counts   <- dplyr::count(df_color, color_group)
     label_positions <- data.frame(
-      color_group = c("Brown", "Blue", "Purple", "Green", "LightBlue",
-                      "Orange", "LightGreen", "Pink"),
-      x = c(0, max(merged$avg_log2FC_1), 0, min(merged$avg_log2FC_1),
-            max(merged$avg_log2FC_1), min(merged$avg_log2FC_1),
-            max(merged$avg_log2FC_1), min(merged$avg_log2FC_1)),
-      y = c(max(merged$avg_log2FC_2), 0, min(merged$avg_log2FC_2), 0,
-            min(merged$avg_log2FC_2), max(merged$avg_log2FC_2),
-            max(merged$avg_log2FC_2), min(merged$avg_log2FC_2))
+      color_group = c("x_only_up", "x_only_down", "y_only_up",   "y_only_down",
+                      "x_up_y_down", "x_down_y_up", "both_up",   "both_down"),
+      x = c(max(merged$avg_log2FC_1), min(merged$avg_log2FC_1),  0,                        0,
+            max(merged$avg_log2FC_1), min(merged$avg_log2FC_1),  max(merged$avg_log2FC_1), min(merged$avg_log2FC_1)),
+      y = c(0,                        0,                          max(merged$avg_log2FC_2), min(merged$avg_log2FC_2),
+            min(merged$avg_log2FC_2), max(merged$avg_log2FC_2),  max(merged$avg_log2FC_2), min(merged$avg_log2FC_2))
     ) %>%
       dplyr::left_join(group_counts, by = "color_group")
+    
+    x_min <- min(merged$avg_log2FC_1)
+    x_max <- max(merged$avg_log2FC_1)
+    y_min <- min(merged$avg_log2FC_2)
+    y_max <- max(merged$avg_log2FC_2)
+    
+    # Parse ident names for directional axis labels
+    c1_parts <- strsplit(c1, " vs\\. ")[[1]]
+    c2_parts <- strsplit(c2, " vs\\. ")[[1]]
+    x_label_left  <- paste0("\u2190 up in ", c1_parts[2])
+    x_label_right <- paste0("up in ", c1_parts[1], " \u2192")
+    y_label_down  <- paste0("\u2190 up in ", c2_parts[2])
+    y_label_up    <- paste0("up in ", c2_parts[1], " \u2192")
     
     p <- ggplot2::ggplot() +
       ggplot2::geom_point(data = df_gray,
@@ -969,13 +1026,20 @@ double_volcano <- function(
       ggplot2::geom_hline(yintercept = c(-lfc_threshold, lfc_threshold),
                           linetype = "dashed", color = "gray50") +
       ggplot2::scale_color_manual(values = color_palette) +
-      ggplot2::labs(x = c1, y = c2, title = "Log2FC", color = "Group") +
+      ggplot2::labs(
+        x     = paste0(x_label_left, "          ", x_label_right),
+        y     = paste0(y_label_down, "          ", y_label_up),
+        title = "Log2FC",
+        color = "Group"
+      ) +
+      
       ggplot2::theme_classic() +
-      ggplot2::theme(plot.title = ggplot2::element_text(face = "bold")) +
+      ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"),
+                     plot.margin  = ggplot2::margin(t = 5, r = 5, b = 10, l = 5, unit = "pt")) +
       ggrepel::geom_text_repel(
         data = dplyr::filter(df_color, gene %in% selected_genes),
         ggplot2::aes(x = avg_log2FC_1, y = avg_log2FC_2, label = gene, color = color_group),
-        size = 4, max.overlaps = Inf,
+        size = 4, max.overlaps = Inf, fontface = "bold",
         box.padding = 1, point.padding = 1,
         segment.color = "gray50", segment.size = 0.3,
         arrow = grid::arrow(length = grid::unit(0.01, "npc"), type = "closed"),
@@ -985,138 +1049,31 @@ double_volcano <- function(
         data = label_positions,
         ggplot2::aes(x = x, y = y, label = n, color = color_group),
         size = 4, fontface = "bold", show.legend = FALSE
-      )
+      ) +
+      ggplot2::coord_cartesian(clip = "off") +
+      ggplot2::annotate("text", x = x_min, y = -Inf, label = x_label_left,
+                        hjust = 0, vjust = 2.5, size = 3.5, color = "gray30") +
+      ggplot2::annotate("text", x = x_max, y = -Inf, label = x_label_right,
+                        hjust = 1, vjust = 2.5, size = 3.5, color = "gray30") +
+      ggplot2::annotate("text", x = -Inf, y = y_min, label = y_label_down,
+                        hjust = 0, vjust = -1, size = 3.5, color = "gray30", angle = 90) +
+      ggplot2::annotate("text", x = -Inf, y = y_max, label = y_label_up,
+                        hjust = 1, vjust = -1, size = 3.5, color = "gray30", angle = 90) +
+      ggplot2::labs(x = NULL, y = NULL, title = "Log2FC", color = "Group")
     
-    outfile <- file.path(output_dir, paste0(gsub(" ", "_", c1), "_", gsub(" ", "_", c2), ".png"))
-    ggplot2::ggsave(outfile, p, width = 8, height = 8)
+    outfile <- file.path(output_dir,
+                         paste0(gsub(" ", "_", c1), "_", gsub(" ", "_", c2), ".png"))
+    ggplot2::ggsave(outfile, p, width = 9, height = 8)
     message("Processed row ", i, ": ", c1, " vs. ", c2)
     print(p)
+    write.csv(df_color,
+              file = file.path(output_dir,
+                               paste0(gsub(" ", "_", c1), "_", gsub(" ", "_", c2), ".csv")))
   }
   
   invisible(merged_list)
 }
 
-
-
-double_volcano_temp <- function(
-    object,
-    comparison_table,
-    output_dir = "2dim_log2fc",
-    lfc_threshold = log2(1.5),
-    pval_cutoff = 0.05,
-    min.pct = 0,
-    color_palette = NULL,
-    selected_genes = NULL
-) {
-  if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
-  
-  if (is.null(color_palette)) {
-    color_palette <- c(
-      "Brown" = "darkred", "Blue" = "blue", "LightBlue" = "#27c8e8",
-      "Green" = "#008000", "Purple" = "purple", "Orange" = "#FFA500",
-      "Pink" = "#ed74d5", "LightGreen" = "#2ff76e"
-    )
-  }
-  
-  Idents(object) <- object$Cohort_tp_mutation
-  plot_files <- list()
-  
-  for (i in seq_len(nrow(comparison_table))) {
-    idents <- unlist(comparison_table[i, 1:4])
-    
-    markers1 <- Seurat::FindMarkers(object, ident.1 = idents[1], ident.2 = idents[2],
-                                    logfc.threshold = 0, min.pct = min.pct)
-    markers2 <- Seurat::FindMarkers(object, ident.1 = idents[3], ident.2 = idents[4],
-                                    logfc.threshold = 0, min.pct = min.pct)
-    
-    c1 <- paste0(idents[1], " vs. ", idents[2])
-    c2 <- paste0(idents[3], " vs. ", idents[4])
-    
-    merged <- dplyr::mutate(markers1, gene = rownames(markers1)) %>%
-      dplyr::inner_join(
-        dplyr::mutate(markers2, gene = rownames(markers2)),
-        by = "gene", suffix = c("_1", "_2")
-      ) %>%
-      dplyr::select(gene, avg_log2FC_1, p_val_adj_1, avg_log2FC_2, p_val_adj_2) %>%
-      dplyr::mutate(
-        color_group = dplyr::case_when(
-          (avg_log2FC_1 < -lfc_threshold | avg_log2FC_2 > lfc_threshold) &
-            p_val_adj_1 < pval_cutoff & p_val_adj_2 < pval_cutoff ~ "Orange",
-          (avg_log2FC_1 > lfc_threshold | avg_log2FC_2 < -lfc_threshold) &
-            p_val_adj_1 < pval_cutoff & p_val_adj_2 < pval_cutoff ~ "LightBlue",
-          (avg_log2FC_1 < -lfc_threshold | avg_log2FC_2 < -lfc_threshold) &
-            p_val_adj_1 < pval_cutoff & p_val_adj_2 < pval_cutoff ~ "Pink",
-          (avg_log2FC_1 > lfc_threshold | avg_log2FC_2 > lfc_threshold) &
-            p_val_adj_1 < pval_cutoff & p_val_adj_2 < pval_cutoff ~ "LightGreen",
-          avg_log2FC_1 > lfc_threshold & p_val_adj_1 < pval_cutoff ~ "Blue",
-          avg_log2FC_2 > lfc_threshold & p_val_adj_2 < pval_cutoff ~ "Brown",
-          avg_log2FC_1 < -lfc_threshold & p_val_adj_1 < pval_cutoff ~ "Green",
-          avg_log2FC_2 < -lfc_threshold & p_val_adj_2 < pval_cutoff ~ "Purple",
-          TRUE ~ "Other"
-        )
-      )
-    
-    df_gray <- dplyr::filter(merged, color_group == "Other")
-    df_color <- dplyr::filter(merged, color_group != "Other")
-    
-    if (nrow(df_color) == 0) {
-      message("No significant genes in row ", i, ". Skipping.")
-      next
-    }
-    
-    group_counts <- dplyr::count(df_color, color_group)
-    label_positions <- data.frame(
-      color_group = c("Brown", "Blue", "Purple", "Green", "LightBlue",
-                      "Orange", "LightGreen", "Pink"),
-      x = c(0, max(merged$avg_log2FC_1), 0, min(merged$avg_log2FC_1),
-            max(merged$avg_log2FC_1), min(merged$avg_log2FC_1),
-            max(merged$avg_log2FC_1), min(merged$avg_log2FC_1)),
-      y = c(max(merged$avg_log2FC_2), 0, min(merged$avg_log2FC_2), 0,
-            min(merged$avg_log2FC_2), max(merged$avg_log2FC_2),
-            max(merged$avg_log2FC_2), min(merged$avg_log2FC_2))
-    ) %>%
-      dplyr::left_join(group_counts, by = "color_group")
-    
-    p <- ggplot2::ggplot() +
-      ggplot2::geom_point(data = df_gray,
-                          ggplot2::aes(x = avg_log2FC_1, y = avg_log2FC_2),
-                          color = "gray80", alpha = 0.6, size = 0.8) +
-      ggplot2::geom_point(data = df_color,
-                          ggplot2::aes(x = avg_log2FC_1, y = avg_log2FC_2,
-                                       color = color_group),
-                          alpha = 0.5, size = 0.7) +
-      ggplot2::geom_vline(xintercept = c(-lfc_threshold, lfc_threshold),
-                          linetype = "dashed", color = "gray50") +
-      ggplot2::geom_hline(yintercept = c(-lfc_threshold, lfc_threshold),
-                          linetype = "dashed", color = "gray50") +
-      ggplot2::scale_color_manual(values = color_palette) +
-      ggplot2::labs(x = c1, y = c2, title = "Conserved Log2FC", color = "Group") +
-      ggplot2::theme_classic() +
-      ggplot2::theme(plot.title = ggplot2::element_text(face = "bold")) +
-      ggrepel::geom_text_repel(
-        data = dplyr::filter(df_color, gene %in% selected_genes),
-        ggplot2::aes(x = avg_log2FC_1, y = avg_log2FC_2, label = gene, color = color_group),
-        size = 4, max.overlaps = Inf,
-        box.padding = 1, point.padding = 1,
-        segment.color = "gray50", segment.size = 0.3,
-        arrow = grid::arrow(length = grid::unit(0.01, "npc"), type = "closed"),
-        show.legend = FALSE
-      ) +
-      ggplot2::geom_text(
-        data = label_positions,
-        ggplot2::aes(x = x, y = y, label = n, color = color_group),
-        size = 4, fontface = "bold", show.legend = FALSE
-      )
-    
-    outfile <- file.path(output_dir, paste0(gsub(" ", "_", c1), "_", gsub(" ", "_", c2), ".png"))
-    ggplot2::ggsave(outfile, p, width = 8, height = 8)
-    message("Processed row ", i, ": ", c1, " vs. ", c2)
-    plot_files[[i]] <- outfile
-  }
-  
-  invisible(plot_files)
-  return(merged)
-}
 
 #' Generate Treemaps of TCR Clonotypes for Selected Epitopes
 #'
@@ -1432,30 +1389,38 @@ heatmap_pseudobulk <- function(object,
 #' This function creates a heatmap showing gene expression averaged across cell types
 #' or groups. Expression values are aggregated by taking the mean across all cells
 #' within each group, then optionally row-scaled (z-score normalized) for visualization.
-#' It allows for customization of gene label appearance.
+#' It allows for customization of gene label appearance and optional row annotations.
 #'
 #' @param object A Seurat object containing expression data and metadata
-#' @param features Character vector of gene names to include in the heatmap
+#' @param features Either a character vector of gene names, or a data frame where
+#'   the first column contains gene names and the second column contains annotation
+#'   category labels (e.g., "Memory/naive-like", "Effector"). When a data frame is
+#'   provided, gene order is preserved and a row annotation bar is automatically
+#'   generated from the category column.
 #' @param groups Character vector specifying the order of cell type/group labels.
-#' This defines both which groups to include and their display order.
+#'   This defines both which groups to include and their display order.
 #' @param idents Character string specifying the metadata column containing
-#' cell type or group information. If NULL, defaults to "cohort_tp".
+#'   cell type or group information. If NULL, defaults to "cohort_tp".
 #' @param bold_genes Character vector of gene names to render in **bold** text.
-#' Uses \code{bquote(bold(...))} for formatting. Default is NULL (no bolding).
+#'   Uses \code{bquote(bold(...))} for formatting. Default is NULL (no bolding).
 #' @param row_fontsize Numeric value specifying the font size for row labels (gene names).
-#' Default is 10.
+#'   Default is 10.
 #' @param normalize Logical indicating whether to normalize the data before plotting.
-#' Default is TRUE.
+#'   Default is TRUE.
 #' @param cluster_rows Logical indicating whether to cluster rows (genes).
-#' Default is FALSE.
+#'   Default is FALSE.
 #' @param cluster_cols Logical indicating whether to cluster columns (groups).
-#' Default is FALSE.
+#'   Default is FALSE.
 #' @param scale Character string indicating scaling method. Options are "row" (default),
-#' "column", or "none".
+#'   "column", or "none".
 #' @param title Optional character string for plot title. Default is NA (no title).
 #' @param angle_col Character string or numeric specifying the angle for column labels.
-#' Default is "315".
-#' @param file_name name of png file.
+#'   Default is "315".
+#' @param annotation_colors Optional character vector of colors assigned to annotation
+#'   categories in order of their first appearance in the features data frame. If
+#'   \code{NULL} and a data frame is passed to \code{features}, colors are
+#'   auto-generated.
+#' @param file_name Name of png file to save. Default is NULL (no file saved).
 #' @param ... Additional arguments passed to pheatmap::pheatmap()
 #'
 #' @return A pheatmap object
@@ -1463,36 +1428,35 @@ heatmap_pseudobulk <- function(object,
 #' @details
 #' The function performs the following steps:
 #' \enumerate{
-#' \item Optionally normalizes the Seurat object
-#' \item Extracts expression data for specified genes
-#' \item Averages expression across all cells within each group
-#' \item Orders groups according to the specified order
-#' \item Creates a heatmap with row scaling (z-score by default), applying bolding
-#' to specified gene names via \code{labels_row} and setting global font size via
-#' \code{fontsize_row}.
+#'   \item Optionally normalizes the Seurat object
+#'   \item Extracts expression data for specified genes
+#'   \item Averages expression across all cells within each group
+#'   \item Orders groups according to the specified order
+#'   \item If \code{features} is a data frame, builds a row annotation from the
+#'     second column, computes \code{gaps_row} automatically at category boundaries,
+#'     and assigns colors either from \code{annotation_colors} or auto-generated ones.
+#'   \item Creates a heatmap with row scaling (z-score by default)
 #' }
-#'
-#' Row scaling computes z-scores as: $z = (x - mean(x)) / sd(x)$
-#' where x represents expression values across all groups for a given gene.
 #'
 #' @examples
 #' \dontrun{
-#' # Basic usage with bolded genes and larger font size
+#' # Vector input (no annotation)
 #' heatmap_meta(
-#' object = object,
-#' features = c("CD3D", "CD8A", "IFNG", "FOXP3"),
-#' groups = c("CD4 T", "CD8 T", "NK"),
-#' bold_genes = c("CD8A", "FOXP3"),
-#' row_fontsize = 12
+#'   object   = obj,
+#'   features = c("CD3D", "CD8A", "IFNG", "FOXP3"),
+#'   groups   = c("CD4 T", "CD8 T", "NK")
 #' )
 #'
-#' # With custom group column and no normalization
+#' # Data frame input (with annotation bar)
+#' feat_df <- data.frame(
+#'   gene     = c("TOX", "HAVCR2", "GZMB", "PRF1", "MKI67", "TCF7", "CCR7"),
+#'   category = c("Exhausted", "Exhausted", "Effector", "Effector",
+#'                "Proliferation", "Memory", "Memory")
+#' )
 #' heatmap_meta(
-#' object = object,
-#' features = marker_genes,
-#' groups = c("Chronic Pre-DAA", "ACTG Pre-DAA", "SR Pre-resolution"),
-#' idents = "condition",
-#' normalize = FALSE
+#'   object   = obj,
+#'   features = feat_df,
+#'   groups   = c("Chronic Pre-DAA", "Chronic Post-DAA", "ACTG Pre-DAA")
 #' )
 #' }
 #'
@@ -1500,38 +1464,75 @@ heatmap_pseudobulk <- function(object,
 heatmap_meta <- function(object,
                          features,
                          groups,
-                         idents = NULL,
-                         bold_genes = NULL, 
-                         row_fontsize = 10,
-                         normalize = TRUE,
-                         cluster_rows = FALSE,
-                         cluster_cols = FALSE,
-                         scale = "row",
-                         title = NA,
-                         angle_col = "315",
-                         file_name = NULL,
+                         idents            = NULL,
+                         bold_genes        = NULL,
+                         row_fontsize      = 10,
+                         normalize         = TRUE,
+                         cluster_rows      = FALSE,
+                         cluster_cols      = FALSE,
+                         scale             = "row",
+                         title             = NA,
+                         angle_col         = "315",
+                         annotation_colors = NULL,
+                         file_name         = NULL,
                          ...) {
   
-  # Set default column name if NULL
+  # 1. Set default idents column
   if (is.null(idents)) {
     idents <- "cohort_tp"
   }
   
-  # Normalize data if requested (using Seurat's NormalizeData)
+  # 2. Parse features — vector or data frame
+  if (is.data.frame(features)) {
+    feat_df      <- features
+    gene_vec     <- as.character(feat_df[[1]])
+    category_vec <- as.character(feat_df[[2]])
+    
+    # Build row annotation df, preserving category order of first appearance
+    category_levels <- unique(category_vec)
+    gene_annotation <- data.frame(
+      category = factor(category_vec, levels = category_levels),
+      row.names = gene_vec,
+      stringsAsFactors = FALSE
+    )
+    colnames(gene_annotation) <- colnames(feat_df)[2]
+    annot_col_name <- colnames(feat_df)[2]
+    
+    # Compute gaps_row at category boundaries
+    gaps_row <- which(diff(as.integer(factor(category_vec, levels = category_levels))) != 0)
+    
+    # Build annotation colors: positional vector -> named list for pheatmap
+    if (is.null(annotation_colors)) {
+      color_vec <- scales::hue_pal()(length(category_levels))
+    } else {
+      color_vec <- annotation_colors
+    }
+    annotation_colors <- setNames(
+      list(setNames(color_vec[seq_along(category_levels)], category_levels)),
+      annot_col_name
+    )
+    
+  } else {
+    gene_vec        <- as.character(features)
+    gene_annotation <- NULL
+    gaps_row        <- NULL
+  }
+  
+  # 3. Normalize if requested
   if (normalize) {
     object <- Seurat::NormalizeData(object)
   }
   
-  features <- intersect(features, rownames(object))
+  # 4. Intersect with available genes (preserving order)
+  gene_vec <- intersect(gene_vec, rownames(object))
   
-  # --- Extract expression data ---
+  # 5. Extract expression data
   expression_matrix <- as.data.frame(Seurat::GetAssayData(object, layer = "data"))
-  expression_matrix <- expression_matrix[features, ]
+  expression_matrix <- expression_matrix[gene_vec, ]
   
-  # --- Add cell type annotations ---
+  # 6. Add cell type annotations and summarize by group (mean)
   cell_annotations <- object[[idents, drop = TRUE]]
   
-  # --- Summarize the expression data by cell type (mean) ---
   grouped_expression <- expression_matrix %>%
     tibble::rownames_to_column(var = "gene") %>%
     tidyr::pivot_longer(-gene, names_to = "cell", values_to = "expression") %>%
@@ -1543,57 +1544,61 @@ heatmap_meta <- function(object,
     dplyr::summarize(mean_expression = mean(expression), .groups = "drop") %>%
     tidyr::pivot_wider(names_from = cell_type, values_from = mean_expression)
   
-  # --- Convert to matrix and order rows/columns ---
+  # 7. Convert to matrix and order rows/columns
   grouped_expression_matrix <- as.matrix(grouped_expression[, -1])
   rownames(grouped_expression_matrix) <- grouped_expression$gene
-  # Ensure the order matches the input 'features'
-  grouped_expression_matrix <- grouped_expression_matrix[features, ]
-  # Ensure the column order matches the input 'groups'
+  grouped_expression_matrix <- grouped_expression_matrix[gene_vec, ]
   grouped_expression_matrix <- grouped_expression_matrix[, groups]
   
-  # --- **Logic to create custom row labels (gene names)** ---
+  # 8. Build bold row labels if requested
   if (!is.null(bold_genes) && any(bold_genes %in% rownames(grouped_expression_matrix))) {
-    
-    # Create an expression vector. The 'bquote' function is used to create an 
-    # expression object that pheatmap can interpret for font styles (bold).
     labels_expression <- lapply(rownames(grouped_expression_matrix), function(gene) {
       if (gene %in% bold_genes) {
-        # Format the gene name as bold using bquote(bold(...))
         return(bquote(bold(.(as.character(gene)))))
       } else {
-        # Keep other gene names as standard text
         return(bquote(.(as.character(gene))))
       }
     })
-    
-    # Convert the list of expressions into a single expression vector
     labels_expression <- as.expression(labels_expression)
   } else {
-    # If no bold genes are specified, use the original row names
     labels_expression <- rownames(grouped_expression_matrix)
   }
   
-  # --- Create heatmap ---
-  p <- pheatmap::pheatmap(
-    grouped_expression_matrix,
+  # 9. Build pheatmap call arguments
+  heatmap_args <- list(
+    mat          = grouped_expression_matrix,
     cluster_rows = cluster_rows,
     cluster_cols = cluster_cols,
-    scale = scale,
-    main = title,
-    angle_col = angle_col,
+    scale        = scale,
+    main         = title,
+    angle_col    = angle_col,
     fontsize_row = row_fontsize,
-    labels_row = labels_expression, 
-    ...
+    labels_row   = labels_expression
   )
   
-  if(!is.null(file_name)){
-    width <- length(unique(groups)) * 0.5 + 5
-    height <- length(unique(features)) * 0.35 + 6
-    png(filename = file_name, 
-        width = width, 
-        height = height,
-        units = "cm",
-        res = 200)
+  # Add annotation arguments only when a data frame was provided
+  if (!is.null(gene_annotation)) {
+    heatmap_args$annotation_row    <- gene_annotation
+    heatmap_args$gaps_row          <- gaps_row
+    heatmap_args$annotation_colors <- annotation_colors
+  }
+  
+  # Merge any extra user-supplied arguments
+  extra_args <- list(...)
+  heatmap_args <- c(heatmap_args, extra_args)
+  
+  # 10. Draw heatmap
+  p <- do.call(pheatmap::pheatmap, heatmap_args)
+  
+  # 11. Optionally save to PNG
+  if (!is.null(file_name)) {
+    width  <- length(unique(groups))  * 0.5 + 5
+    height <- length(unique(gene_vec)) * 0.35 + 6
+    png(filename = file_name,
+        width    = width,
+        height   = height,
+        units    = "cm",
+        res      = 200)
     print(p)
     dev.off()
   }
@@ -1703,8 +1708,8 @@ venn_plots <- function(object,
                               comparisons,
                               idents,
                               direction = "up",
-                              log2fc_threshold = 0.58,
-                              min_pct = 0.3,
+                              log2fc_threshold = log2(1.5),
+                              min_pct = 0.01,
                               p_adj_cutoff = 0.05,
                               fills = NULL,
                               alpha = 0.6,
@@ -1767,15 +1772,15 @@ venn_plots <- function(object,
     # Filter genes based on direction
     if (direction == "up") {
       filtered_genes <- rownames(
-        markers %>% filter(p_val_adj < p_adj_cutoff, avg_log2FC > log2fc_threshold)
+        markers %>% dplyr::filter(p_val_adj <= p_adj_cutoff, avg_log2FC >= log2fc_threshold)
       )
     } else if (direction == "down") {
       filtered_genes <- rownames(
-        markers %>% filter(p_val_adj < p_adj_cutoff, avg_log2FC < -log2fc_threshold)
+        markers %>% dplyr::filter(p_val_adj <= p_adj_cutoff, avg_log2FC <= -log2fc_threshold)
       )
     } else {  # both
       filtered_genes <- rownames(
-        markers %>% filter(p_val_adj < p_adj_cutoff, abs(avg_log2FC) > log2fc_threshold)
+        markers %>% dplyr::filter(p_val_adj <= p_adj_cutoff, abs(avg_log2FC) >= log2fc_threshold)
       )
     }
     
@@ -1796,7 +1801,7 @@ venn_plots <- function(object,
   }
   
   # Compute Euler fit
-  fit <- euler(genes_list, ...)
+  fit <- eulerr::euler(genes_list, ...)
   
   # Generate main title if not provided
   if (is.null(main)) {
@@ -1811,8 +1816,8 @@ venn_plots <- function(object,
   if (is.null(subtitle)) {
     subtitle <- paste0(
       "min.pct = ", min_pct, 
-      "  |log2FC| > ", log2fc_threshold,
-      "  p.adj < ", p_adj_cutoff
+      "  |log2FC| >= ", log2fc_threshold,
+      "  p.adj <= ", p_adj_cutoff
     )
   }
   
@@ -1828,7 +1833,7 @@ venn_plots <- function(object,
     main = main
   ))
   # Add subtitle
-  grid.text(
+  grid::grid.text(
     subtitle,
     y = unit(0.93, "npc"),
     gp = gpar(cex = 0.8)
@@ -2397,10 +2402,14 @@ compare_cnmf_programs <- function(
 #' @param pre_label Character string for the 'pre' timepoint label (e.g., "Baseline").
 #' @param post_label Character string for the 'post' timepoint label (e.g., "Post-Treatment").
 #' @param facet_col Character string specifying the metadata column to facet by (e.g., "Cohort"). Default is NULL.
-#' @param value_type Character string indicating whether to plot the mean ("mean") or median ("median") 
-#'                   expression per patient. Default is "mean".
+#' @param value_type Character string indicating whether to plot the mean ("mean") or median ("median")
+#'   expression per patient. Default is "mean".
+#' @param add_stats Logical. If \code{TRUE}, adds a paired statistical test result above the comparison
+#'   bracket (default = FALSE).
+#' @param test_method Character. Statistical test to use. One of \code{"wilcox.test"} (Wilcoxon signed-rank,
+#'   default) or \code{"t.test"} (paired t-test).
 #'
-#' @return A ggplot object showing paired expression changes.
+#' @return A list with \code{plot} (ggplot object) and \code{data} (paired data frame).
 #' @export
 boxplot_paired_points <- function(
     object,
@@ -2410,7 +2419,9 @@ boxplot_paired_points <- function(
     pre_label = "Baseline",
     post_label = "Post-Treatment",
     facet_col = NULL,
-    value_type = "mean"
+    value_type = "mean",
+    add_stats = FALSE,
+    test_method = "wilcox.test"
 ) {
   # 1. Input Validation
   if (!gene %in% rownames(object)) {
@@ -2426,66 +2437,432 @@ boxplot_paired_points <- function(
   metadata$Patient <- metadata[[participant_col]]
   metadata$Timepoint <- metadata[[timepoint_col]]
   
-  # 3. Filter and Aggregate Data per Patient
+  # # 3. Filter and Aggregate Data per Patient
+  # plot_data <- metadata %>%
+  #   dplyr::filter(.data$Timepoint %in% c(pre_label, post_label)) %>%
+  #   dplyr::group_by(.data$Patient, .data$Timepoint,
+  #                   !!!if(!is.null(facet_col)) list(rlang::sym(facet_col)) else list()) %>%
+  #   dplyr::summarize(
+  #     Value = if (value_type == "mean") mean(Expression) else median(Expression),
+  #     .groups = 'drop'
+  #   ) %>%
+  #   dplyr::ungroup()
   
-  # Filter for pre/post timepoints only
+  # 3. Filter and Aggregate Data per Patient
   plot_data <- metadata %>%
     dplyr::filter(.data$Timepoint %in% c(pre_label, post_label)) %>%
-    dplyr::group_by(.data$Patient, .data$Timepoint, 
+    dplyr::group_by(.data$Patient, .data$Timepoint,
                     !!!if(!is.null(facet_col)) list(rlang::sym(facet_col)) else list()) %>%
     dplyr::summarize(
-      Value = if (value_type == "mean") mean(Expression) else median(Expression),
-      .groups = 'drop'
+      Value    = if (value_type == "mean") mean(Expression) else median(Expression),
+      n_cells  = dplyr::n(),   # <-- count cells per patient per timepoint
+      .groups  = 'drop'
     ) %>%
     dplyr::ungroup()
   
-  # Ensure Timepoint is a factor with the correct order
   plot_data$Timepoint <- factor(plot_data$Timepoint, levels = c(pre_label, post_label))
   
   # 4. Identify Paired Patients
   paired_data <- plot_data %>%
     dplyr::group_by(.data$Patient) %>%
-    dplyr::filter(n() == 2) %>%
+    dplyr::filter(dplyr::n() == 2) %>%
     dplyr::ungroup()
   
-  # 5. Create the Plot
+  # 5. Compute statistics per facet group if requested
+  if (add_stats) {
+    facet_groups <- if (!is.null(facet_col)) unique(paired_data[[facet_col]]) else "all"
+    
+    stat_results <- lapply(facet_groups, function(grp) {
+      if (!is.null(facet_col)) {
+        grp_data <- paired_data %>% dplyr::filter(.data[[facet_col]] == grp)
+      } else {
+        grp_data <- paired_data
+      }
+      
+      pre_vals  <- grp_data$Value[grp_data$Timepoint == pre_label]
+      post_vals <- grp_data$Value[grp_data$Timepoint == post_label]
+      
+      # Match by patient to ensure proper pairing
+      pre_vals  <- grp_data %>% dplyr::filter(.data$Timepoint == pre_label)  %>% dplyr::arrange(.data$Patient) %>% dplyr::pull(.data$Value)
+      post_vals <- grp_data %>% dplyr::filter(.data$Timepoint == post_label) %>% dplyr::arrange(.data$Patient) %>% dplyr::pull(.data$Value)
+      
+      if (length(pre_vals) < 3 || length(post_vals) < 3) {
+        p_val <- NA
+        message("Skipping stats for group '", grp, "': fewer than 3 paired observations.")
+      } else {
+        test_fn <- match.fun(test_method)
+        p_val   <- test_fn(pre_vals, post_vals, paired = TRUE)$p.value
+      }
+      
+      # Format p value label
+      p_label <- if (is.na(p_val)) "p = NA" else sprintf("p = %.4f", p_val)
+      
+      # Y position for label
+      y_max <- max(grp_data$Value, na.rm = TRUE)
+      y_range <- diff(range(grp_data$Value, na.rm = TRUE))
+      y_bracket <- y_max + y_range * 0.05   # bracket sits 5% of range above max
+      y_label   <- y_bracket + 0.1  # label sits fixed gap above bracket
+      
+      data.frame(
+        facet     = grp,
+        p_label   = p_label,
+        y_bracket = y_bracket,
+        y_label   = y_label,
+        stringsAsFactors = FALSE
+      )
+    })
+    
+    stat_df <- do.call(rbind, stat_results)
+    if (!is.null(facet_col)) colnames(stat_df)[1] <- facet_col
+    
+    # X position: midpoint between the two timepoints (1.5 on a 2-level factor)
+    stat_df$x_pos <- 1.5
+  }
+  
+  # 6. Create the Plot
   p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = .data$Timepoint, y = .data$Value)) +
-    
-    # Add boxplots for overall distribution
-    ggplot2::geom_boxplot(
-      width = 0.5, 
-      outlier.shape = NA, # Remove outliers drawn by boxplot
-      alpha = 0.6
-    ) +
-    
-    # Add paired lines (geom_line uses paired_data)
+    ggplot2::geom_boxplot(width = 0.5, outlier.shape = NA, alpha = 0.6) +
     ggplot2::geom_line(
-      data = paired_data, 
-      ggplot2::aes(group = .data$Patient), 
-      color = "gray", 
+      data = paired_data,
+      ggplot2::aes(group = .data$Patient),
+      color = "gray",
       linewidth = 0.5
     ) +
-    
-    # Add individual data points (geom_point uses all plot_data)
+    # Solid points: n_cells >= 10
     ggplot2::geom_point(
-      size = 2,
-      # Use color aesthetic from Timepoint for visual distinction
-      ggplot2::aes(color = .data$Timepoint) 
+      data = dplyr::filter(plot_data, n_cells >= 10),
+      ggplot2::aes(color = .data$Timepoint),
+      shape = 19, size = 2
     ) +
-    
-    # Customize aesthetics
+    # Hollow points: n_cells < 10
+    ggplot2::geom_point(
+      data = dplyr::filter(plot_data, n_cells < 10),
+      ggplot2::aes(color = .data$Timepoint),
+      shape = 21, size = 2, fill = NA
+    ) +
     ggplot2::labs(
       title = gene,
-      x = rlang::as_label(rlang::sym(timepoint_col)),
-      y = paste(stringr::str_to_title(value_type), "Expression")
+      x     = rlang::as_label(rlang::sym(timepoint_col)),
+      y     = paste(stringr::str_to_title(value_type), "Expression")
     ) +
-    ggplot2::theme_minimal()
+    ggplot2::theme_minimal() +
+    ggplot2::theme(legend.position = "none")
   
-  # 6. Add Faceting if requested
+  # 7. Add faceting
   if (!is.null(facet_col)) {
     p <- p + ggplot2::facet_wrap(stats::as.formula(paste("~", facet_col)))
   }
   
-  return(list(plot = p,
-              data = paired_data))
+  # 8. Add stat labels + bracket
+  if (add_stats) {
+    p <- p +
+      ggplot2::geom_text(
+        data = stat_df,
+        ggplot2::aes(x = x_pos, y = y_label, label = p_label),
+        inherit.aes = FALSE,
+        size = 3.5,
+        hjust = 0.5
+      ) +
+      ggplot2::geom_segment(
+        data = stat_df,
+        ggplot2::aes(x = 1, xend = 2, y = y_bracket, yend = y_bracket),
+        inherit.aes = FALSE,
+        linewidth = 0.4
+      )
+  }
+  
+  return(list(plot = p, data = plot_data))
+}
+
+#' Scatter Plot of Two Variables from a Seurat Object
+#'
+#' Plots two variables against each other, coloring points by a specified grouping variable.
+#' Variables can be meta.data columns or gene expression values (from the data layer).
+#'
+#' @param object A Seurat object.
+#' @param x_var Character. Column name in \code{meta.data} or gene name for the x-axis.
+#' @param y_var Character. Column name in \code{meta.data} or gene name for the y-axis.
+#' @param color_by Character. Column name in \code{meta.data} to color points by.
+#' @param colors Character vector of colors. If \code{NULL}, uses default ggplot2 colors (default = NULL).
+#' @param point_size Numeric. Size of points (default = 0.5).
+#' @param alpha Numeric. Transparency of points, between 0 and 1 (default = 0.5).
+#' @param title Character. Plot title. If \code{NULL}, auto-generated from x_var and y_var (default = NULL).
+#' @param downsample Logical. If \code{TRUE}, randomly downsample each group to the size of the
+#'   smallest group before plotting (default = FALSE).
+#'
+#' @return A \code{ggplot} object.
+#' @export
+scatter_plot <- function(object,
+                         x_var,
+                         y_var,
+                         color_by,
+                         colors     = NULL,
+                         point_size = 0.5,
+                         alpha      = 0.5,
+                         title      = NULL,
+                         downsample = FALSE) {
+  # Helper: fetch a variable from meta.data or gene expression
+  metadata <- object@meta.data
+  fetch_var <- function(obj, var) {
+    if (var %in% colnames(metadata)) {
+      return(metadata[[var]])
+    } else if (var %in% rownames(obj)) {
+      return(as.numeric(Seurat::FetchData(obj, vars = var, layer = "data")[[var]]))
+    } else {
+      stop("'", var, "' not found in meta.data or gene features.")
+    }
+  }
+  
+  # Validate color_by
+  if (!color_by %in% colnames(object@meta.data)) {
+    stop("'", color_by, "' not found in meta.data.")
+  }
+  
+  df <- data.frame(
+    x     = fetch_var(object, x_var),
+    y     = fetch_var(object, y_var),
+    group = factor(object@meta.data[[color_by]])
+  )
+  
+  # Downsample each group to the size of the smallest group
+  if (downsample) {
+    min_n <- min(table(df$group))
+    df <- do.call(rbind, lapply(split(df, df$group), function(g) {
+      g[sample(nrow(g), min_n), ]
+    }))
+  }
+  
+  plot_title <- if (!is.null(title)) title else paste(x_var, "vs.", y_var)
+  
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = x, y = y, color = group)) +
+    ggplot2::geom_point(size = point_size, alpha = alpha) +
+    ggplot2::labs(
+      title = plot_title,
+      x     = x_var,
+      y     = y_var,
+      color = color_by
+    ) +
+    ggplot2::theme_classic() +
+    ggplot2::theme(
+      plot.title   = ggplot2::element_text(hjust = 0.5, face = "bold"),
+      legend.title = ggplot2::element_text(face = "bold")
+    )
+  
+  if (!is.null(colors)) {
+    p <- p + ggplot2::scale_color_manual(values = colors)
+  }
+  
+  return(p)
+}
+
+#' Scatter Plot of Two Variables from a Seurat Object
+#'
+#' Plots two variables against each other, coloring points by a specified grouping variable.
+#' Variables can be meta.data columns or gene expression values (from the data layer).
+#'
+#' @param object A Seurat object.
+#' @param x_var Character. Column name in \code{meta.data} or gene name for the x-axis.
+#' @param y_var Character. Column name in \code{meta.data} or gene name for the y-axis.
+#' @param color_by Character. Column name in \code{meta.data} to color points by.
+#' @param colors Character vector of colors. If \code{NULL}, uses default ggplot2 colors (default = NULL).
+#' @param point_size Numeric. Size of points (default = 0.5).
+#' @param alpha Numeric. Transparency of points, between 0 and 1 (default = 0.5).
+#' @param title Character. Plot title. If \code{NULL}, auto-generated from x_var and y_var (default = NULL).
+#' @param downsample Logical. If \code{TRUE}, randomly downsample each group to the size of the
+#'   smallest group before plotting (default = FALSE).
+#' @param shuffle Logical. If \code{TRUE}, randomly shuffles the order of points before plotting
+#'   to avoid overplotting by group order (default = TRUE).
+#'
+#' @return A \code{ggplot} object.
+#' @export
+scatter_plot <- function(object,
+                         x_var,
+                         y_var,
+                         color_by,
+                         colors     = NULL,
+                         point_size = 0.5,
+                         alpha      = 0.5,
+                         title      = NULL,
+                         downsample = FALSE,
+                         shuffle    = TRUE) {
+  # Helper: fetch a variable from meta.data or gene expression
+  metadata <- object@meta.data
+  fetch_var <- function(obj, var) {
+    if (var %in% colnames(metadata)) {
+      return(metadata[[var]])
+    } else if (var %in% rownames(obj)) {
+      return(as.numeric(Seurat::FetchData(obj, vars = var, layer = "data")[[var]]))
+    } else {
+      stop("'", var, "' not found in meta.data or gene features.")
+    }
+  }
+  
+  # Validate color_by
+  if (!color_by %in% colnames(object@meta.data)) {
+    stop("'", color_by, "' not found in meta.data.")
+  }
+  
+  df <- data.frame(
+    x     = fetch_var(object, x_var),
+    y     = fetch_var(object, y_var),
+    group = factor(object@meta.data[[color_by]])
+  )
+  
+  # Downsample each group to the size of the smallest group
+  if (downsample) {
+    min_n <- min(table(df$group))
+    df <- do.call(rbind, lapply(split(df, df$group), function(g) {
+      g[sample(nrow(g), min_n), ]
+    }))
+  }
+  
+  # Shuffle row order to avoid group layering
+  if (shuffle) {
+    df <- df[sample(nrow(df)), ]
+  }
+  
+  plot_title <- if (!is.null(title)) title else paste(x_var, "vs.", y_var)
+  
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = x, y = y, color = group)) +
+    ggplot2::geom_point(size = point_size, alpha = alpha) +
+    ggplot2::labs(
+      title = plot_title,
+      x     = x_var,
+      y     = y_var,
+      color = color_by
+    ) +
+    ggplot2::theme_classic() +
+    ggplot2::theme(
+      plot.title   = ggplot2::element_text(hjust = 0.5, face = "bold"),
+      legend.title = ggplot2::element_text(face = "bold")
+    )
+  
+  if (!is.null(colors)) {
+    p <- p + ggplot2::scale_color_manual(values = colors)
+  }
+  
+  return(p)
+}
+
+#' Plot Gene Expression Boxplots with Jitter by Cell Type Groups
+#'
+#' Generates boxplots with overlaid jitter points of gene expression for
+#' selected groups (cell types) from a Seurat object. Multiple features are
+#' shown as faceted panels in a single plot.
+#'
+#' @param object A Seurat object containing expression data and metadata.
+#' @param features Character vector of gene names to plot.
+#' @param idents Character string specifying the metadata column to use for
+#'   setting cell identities (e.g., "cell_type", "seurat_clusters").
+#' @param groups Character vector specifying which categories within \code{idents}
+#'   to include. If \code{NULL}, all groups are used.
+#' @param colors Character vector of colors, assigned to groups in order.
+#'   If \code{NULL}, a default color palette is used.
+#' @param x_label_angle Numeric. Rotation angle for x-axis labels. Default is 0
+#'   (horizontal). Use 45 for diagonal or 90 for vertical.
+#' @param jitter_size Numeric. Size of jitter points. Default is 0.5.
+#' @param jitter_alpha Numeric. Transparency of jitter points (0-1). Default is 0.4.
+#' @param boxplot_alpha Numeric. Transparency of boxplot fill (0-1). Default is 0.6.
+#' @param outlier_shape Numeric. Shape for outlier points in boxplot. Default is
+#'   \code{NA} (hidden, since jitter already shows all points).
+#' @param facet_scales Character. Scales for facet panels, passed to
+#'   \code{facet_wrap}. One of \code{"fixed"}, \code{"free"}, \code{"free_x"},
+#'   or \code{"free_y"}. Default is \code{"free_y"}.
+#'
+#' @return A ggplot object.
+#' @export
+boxplot_jitter <- function(
+    object,
+    features,
+    idents,
+    groups        = NULL,
+    colors        = NULL,
+    x_label_angle = 0,
+    jitter_size   = 0.5,
+    jitter_alpha  = 0.4,
+    boxplot_alpha = 0.6,
+    outlier_shape = NA,
+    facet_scales  = "free_y") {
+  
+  # 1. Input Validation
+  missing_genes <- features[!features %in% rownames(object)]
+  if (length(missing_genes) > 0) {
+    features <- intersect(features, rownames(object))
+    print(paste0("The following features were not found in the Seurat object: ",
+                 paste(missing_genes, collapse = ", ")))
+  }
+  if (!idents %in% colnames(object@meta.data)) {
+    stop(paste0("Column '", idents, "' not found in object metadata."))
+  }
+  
+  # 2. Set Idents and filter groups
+  Seurat::Idents(object) <- idents
+  if (!is.null(groups)) {
+    missing_groups <- groups[!groups %in% unique(object@meta.data[[idents]])]
+    if (length(missing_groups) > 0) {
+      warning(paste0("The following groups were not found in '", idents, "': ",
+                     paste(missing_groups, collapse = ", ")))
+    }
+    object <- subset(object, idents = groups)
+  }
+  
+  # 3. Extract normalized expression for all features
+  expr_matrix <- Seurat::GetAssayData(object, layer = "data")
+  expr_df <- as.data.frame(t(as.matrix(expr_matrix[features, , drop = FALSE])))
+  expr_df$Group <- object@meta.data[[idents]]
+  
+  # 4. Reshape to long format
+  plot_data <- tidyr::pivot_longer(
+    expr_df,
+    cols      = -Group,
+    names_to  = "Feature",
+    values_to = "Expression"
+  )
+  plot_data$Feature <- factor(plot_data$Feature, levels = features)
+  
+  # Respect group order if provided
+  if (!is.null(groups)) {
+    plot_data$Group <- factor(plot_data$Group, levels = groups)
+  }
+  
+  # 5. Set colors
+  all_groups <- levels(factor(plot_data$Group))
+  if (is.null(colors)) {
+    colors <- scales::hue_pal()(length(all_groups))
+  }
+  colors <- setNames(colors[seq_along(all_groups)], all_groups)
+  
+  # 6. Build Plot
+  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = .data$Group, y = .data$Expression,
+                                               fill = .data$Group, color = .data$Group)) +
+    ggplot2::geom_jitter(
+      size   = jitter_size,
+      alpha  = jitter_alpha,
+      width  = 0.2,
+      height = 0
+    ) +
+    ggplot2::geom_boxplot(
+      alpha         = boxplot_alpha,
+      outlier.shape = outlier_shape,
+      width         = 0.6,
+      color         = "black"
+    ) +
+    ggplot2::scale_fill_manual(values  = colors) +
+    ggplot2::scale_color_manual(values = colors) +
+    ggplot2::facet_wrap(~ Feature, scales = facet_scales) +
+    ggplot2::labs(
+      x = idents,
+      y = "Normalized Expression"
+    ) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(
+      legend.position = "none",
+      axis.text.x     = ggplot2::element_text(
+        angle = x_label_angle,
+        hjust = if (x_label_angle == 0) 0.5 else 1
+      ),
+      strip.text      = ggplot2::element_text(face = "bold")
+    )
+  
+  return(p)
 }

@@ -9,15 +9,23 @@ heatmap_cell_level(
   features,
   idents,
   colors,
-  split_by_cluster = T,
-  cluster_rows = F,
-  cluster_columns = F,
+  split_by_cluster = TRUE,
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  cluster_groups = FALSE,
+  show_legend = FALSE,
+  group_order = NULL,
   downsample = FALSE,
   file_name = NULL,
   zlim = c(-2, 2),
   width = 6,
   height = NULL,
   fontsize = 3,
+  bold_genes = NULL,
+  transpose = FALSE,
+  protein_features = NULL,
+  protein_zlim = c(-2, 2),
+  scale_protein = TRUE,
   res = 300
 )
 }
@@ -37,26 +45,52 @@ heatmap_cell_level(
 
 \item{cluster_columns}{Logical. Whether to cluster columns (cells) in the heatmap (default = FALSE).}
 
+\item{cluster_groups}{Logical. If \code{TRUE}, orders cluster splits by hierarchical clustering
+on their mean expression profiles (default = FALSE).}
+
+\item{show_legend}{Logical.Whether to show cluster legend.}
+
+\item{group_order}{Character vector. Manual ordering of cluster levels. Overrides
+\code{cluster_groups} if both are specified (default = NULL).}
+
 \item{downsample}{Logical or numeric. If \code{TRUE}, downsamples to the smallest group size.
 If numeric, downsamples each group to that number of cells (default = FALSE).}
 
 \item{file_name}{Character. File name for the saved heatmap PNG.
-If \code{NULL}, defaults to \code{"<cluster>_heatmap.png"}.}
+If \code{NULL}, the plot is not saved (default = NULL).}
 
 \item{zlim}{Numeric vector of length 2 specifying limits for Z-score color scale (default = c(-2, 2)).}
 
 \item{width}{Numeric. Width of the output PNG in inches (default = 6).}
 
-\item{height}{Numeric. Height of the output PNG in inches (default = 8).}
+\item{height}{Numeric. Height of the output PNG in inches (default = NULL, auto-calculated).}
 
-\item{fontsize}{fontsize of rownames. Default is 3.}
+\item{fontsize}{Numeric. Font size of row/column gene name labels (default = 3).}
+
+\item{bold_genes}{Character vector of gene names to render in bold on the heatmap row labels.
+Only applies in non-transpose mode. Default is NULL (no bolding).}
+
+\item{transpose}{Logical. If \code{TRUE}, transposes the heatmap so that genes appear on the
+x-axis (columns) and cells on the y-axis (rows). Cluster identity levels are reversed to
+maintain ascending order (default = FALSE).}
+
+\item{protein_features}{Character vector of protein feature names to fetch from metadata or assay.
+If \code{NULL}, no protein heatmap is added (default = NULL).}
+
+\item{protein_zlim}{Numeric vector of length 2 specifying limits for protein color scale
+(default = c(-2, 2)).}
+
+\item{scale_protein}{Logical. If \code{TRUE}, z-scores each protein across cells before plotting,
+matching the gene scaling logic. If \code{FALSE}, uses raw fetched values (default = TRUE).}
 
 \item{res}{Numeric. Resolution of the output PNG in DPI (default = 300).}
 }
 \value{
-NULL. Heatmap is saved to file.
+A \code{ComplexHeatmap} object. The heatmap is also saved to file if \code{file_name}
+is provided.
 }
 \description{
 Scales data for selected genes, arranges cells by cluster, and produces a heatmap
-with custom colors for clusters. Saves the heatmap as a PNG file.
+with custom colors for clusters. Optionally appends a protein expression heatmap
+below (or beside in transpose mode). Saves the heatmap as a PNG file.
 }

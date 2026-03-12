@@ -17,6 +17,7 @@ heatmap_meta(
   scale = "row",
   title = NA,
   angle_col = "315",
+  annotation_colors = NULL,
   file_name = NULL,
   ...
 )
@@ -24,7 +25,11 @@ heatmap_meta(
 \arguments{
 \item{object}{A Seurat object containing expression data and metadata}
 
-\item{features}{Character vector of gene names to include in the heatmap}
+\item{features}{Either a character vector of gene names, or a data frame where
+the first column contains gene names and the second column contains annotation
+category labels (e.g., "Memory/naive-like", "Effector"). When a data frame is
+provided, gene order is preserved and a row annotation bar is automatically
+generated from the category column.}
 
 \item{groups}{Character vector specifying the order of cell type/group labels.
 This defines both which groups to include and their display order.}
@@ -55,7 +60,12 @@ Default is FALSE.}
 \item{angle_col}{Character string or numeric specifying the angle for column labels.
 Default is "315".}
 
-\item{file_name}{name of png file.}
+\item{annotation_colors}{Optional character vector of colors assigned to annotation
+categories in order of their first appearance in the features data frame. If
+\code{NULL} and a data frame is passed to \code{features}, colors are
+auto-generated.}
+
+\item{file_name}{Name of png file to save. Default is NULL (no file saved).}
 
 \item{...}{Additional arguments passed to pheatmap::pheatmap()}
 }
@@ -66,7 +76,7 @@ A pheatmap object
 This function creates a heatmap showing gene expression averaged across cell types
 or groups. Expression values are aggregated by taking the mean across all cells
 within each group, then optionally row-scaled (z-score normalized) for visualization.
-It allows for customization of gene label appearance.
+It allows for customization of gene label appearance and optional row annotations.
 }
 \details{
 The function performs the following steps:
@@ -75,32 +85,31 @@ The function performs the following steps:
 \item Extracts expression data for specified genes
 \item Averages expression across all cells within each group
 \item Orders groups according to the specified order
-\item Creates a heatmap with row scaling (z-score by default), applying bolding
-to specified gene names via \code{labels_row} and setting global font size via
-\code{fontsize_row}.
+\item If \code{features} is a data frame, builds a row annotation from the
+second column, computes \code{gaps_row} automatically at category boundaries,
+and assigns colors either from \code{annotation_colors} or auto-generated ones.
+\item Creates a heatmap with row scaling (z-score by default)
 }
-
-Row scaling computes z-scores as: $z = (x - mean(x)) / sd(x)$
-where x represents expression values across all groups for a given gene.
 }
 \examples{
 \dontrun{
-# Basic usage with bolded genes and larger font size
+# Vector input (no annotation)
 heatmap_meta(
-object = object,
-features = c("CD3D", "CD8A", "IFNG", "FOXP3"),
-groups = c("CD4 T", "CD8 T", "NK"),
-bold_genes = c("CD8A", "FOXP3"),
-row_fontsize = 12
+  object   = obj,
+  features = c("CD3D", "CD8A", "IFNG", "FOXP3"),
+  groups   = c("CD4 T", "CD8 T", "NK")
 )
 
-# With custom group column and no normalization
+# Data frame input (with annotation bar)
+feat_df <- data.frame(
+  gene     = c("TOX", "HAVCR2", "GZMB", "PRF1", "MKI67", "TCF7", "CCR7"),
+  category = c("Exhausted", "Exhausted", "Effector", "Effector",
+               "Proliferation", "Memory", "Memory")
+)
 heatmap_meta(
-object = object,
-features = marker_genes,
-groups = c("Chronic Pre-DAA", "ACTG Pre-DAA", "SR Pre-resolution"),
-idents = "condition",
-normalize = FALSE
+  object   = obj,
+  features = feat_df,
+  groups   = c("Chronic Pre-DAA", "Chronic Post-DAA", "ACTG Pre-DAA")
 )
 }
 

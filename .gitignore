@@ -7,3 +7,4 @@ LICENSE.md
 .Rhistory
 .Rbuildignore
 _pkgdown.yml
+README.Rmd

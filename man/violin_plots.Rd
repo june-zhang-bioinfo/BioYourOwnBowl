@@ -16,7 +16,7 @@ violin_plots(
   height = NULL,
   ncol = 5,
   add_stats = FALSE,
-  test_method = "wilcox",
+  test_method = "wilcox.test",
   comparisons = NULL,
   p_adjust_method = "BH",
   symnum_args = list(cutpoints = c(0, 1e-04, 0.001, 0.01, 0.05, 1), symbols = c("****",
@@ -52,18 +52,18 @@ Default is NULL.}
 Default is FALSE.}
 
 \item{test_method}{Character string specifying the statistical test method. Options are
-"wilcox" (Wilcoxon rank-sum test) or "t.test" (t-test). Default is "wilcox".}
+\code{"wilcox.test"} (Wilcoxon rank-sum test, default) or \code{"t.test"} (t-test).
+Tests are run independently per gene.}
 
 \item{comparisons}{List of length-2 character vectors specifying pairwise comparisons to test.
 If NULL and add_stats = TRUE, all pairwise comparisons will be performed. Default is NULL.}
 
 \item{p_adjust_method}{Character string specifying p-value adjustment method for multiple
-testing. Options include "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none".
-Default is "BH" (Benjamini-Hochberg).}
+testing across comparisons within each gene. Options include "holm", "hochberg", "hommel",
+"bonferroni", "BH", "BY", "fdr", "none". Default is "BH" (Benjamini-Hochberg).}
 
-\item{symnum_args}{List of arguments to pass to symnum() for significance symbols.
-Default is list(cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, 1),
-symbols = c("\emph{\emph{\strong{", "}}", "**", "}", "ns")).}
+\item{symnum_args}{List with \code{cutpoints} and \code{symbols} used to convert p-values
+to significance labels. Default uses: **** p<0.0001, *** p<0.001, ** p<0.01, * p<0.05, ns otherwise.}
 }
 \value{
 A ggplot object
@@ -101,12 +101,10 @@ violin_plots(
   features = gene_list,
   idents = "cohort_tp",
   groups = c("Chronic Post-DAA", "ACTG Post-DAA", "SR ≥24W-post-resolution"),
-  colors = c("Chronic Post-DAA" = "#F8A19FB2",
-             "ACTG Post-DAA" = "#2ED9FFB2",
-             "SR ≥24W-post-resolution" = "#FEAF16B2"),
+  colors = c("#F8A19FB2", "#2ED9FFB2", "#FEAF16B2"),
   add_stats = TRUE,
   comparisons = my_comparisons,
-  test_method = "wilcox",
+  test_method = "wilcox.test",
   file_name = "expression_violin.png"
 )
 }

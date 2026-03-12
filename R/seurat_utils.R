@@ -817,7 +817,8 @@ clustering <- function(
 #' Generate Clustered Heatmap for Seurat Object
 #'
 #' Scales data for selected genes, arranges cells by cluster, and produces a heatmap
-#' with custom colors for clusters. Saves the heatmap as a PNG file.
+#' with custom colors for clusters. Optionally appends a protein expression heatmap
+#' below (or beside in transpose mode). Saves the heatmap as a PNG file.
 #'
 #' @param object A Seurat object.
 #' @param features A character vector or a data frame with a column
@@ -827,31 +828,56 @@ clustering <- function(
 #' @param split_by_cluster Logical. If \code{TRUE}, splits the heatmap by cluster (default = TRUE).
 #' @param cluster_rows Logical. Whether to cluster rows (genes) in the heatmap (default = FALSE).
 #' @param cluster_columns Logical. Whether to cluster columns (cells) in the heatmap (default = FALSE).
+#' @param cluster_groups Logical. If \code{TRUE}, orders cluster splits by hierarchical clustering
+#'   on their mean expression profiles (default = FALSE).
+#' @param show_legend Logical.Whether to show cluster legend. 
+#' @param group_order Character vector. Manual ordering of cluster levels. Overrides
+#'   \code{cluster_groups} if both are specified (default = NULL).
 #' @param downsample Logical or numeric. If \code{TRUE}, downsamples to the smallest group size.
 #'   If numeric, downsamples each group to that number of cells (default = FALSE).
 #' @param file_name Character. File name for the saved heatmap PNG.
-#'   If \code{NULL}, defaults to \code{"<cluster>_heatmap.png"}.
+#'   If \code{NULL}, the plot is not saved (default = NULL).
 #' @param zlim Numeric vector of length 2 specifying limits for Z-score color scale (default = c(-2, 2)).
 #' @param width Numeric. Width of the output PNG in inches (default = 6).
-#' @param height Numeric. Height of the output PNG in inches (default = 8).
-#' @param fontsize fontsize of rownames. Default is 3.
+#' @param height Numeric. Height of the output PNG in inches (default = NULL, auto-calculated).
+#' @param fontsize Numeric. Font size of row/column gene name labels (default = 3).
+#' @param bold_genes Character vector of gene names to render in bold on the heatmap row labels.
+#'   Only applies in non-transpose mode. Default is NULL (no bolding).
+#' @param transpose Logical. If \code{TRUE}, transposes the heatmap so that genes appear on the
+#'   x-axis (columns) and cells on the y-axis (rows). Cluster identity levels are reversed to
+#'   maintain ascending order (default = FALSE).
+#' @param protein_features Character vector of protein feature names to fetch from metadata or assay.
+#'   If \code{NULL}, no protein heatmap is added (default = NULL).
+#' @param protein_zlim Numeric vector of length 2 specifying limits for protein color scale
+#'   (default = c(-2, 2)).
+#' @param scale_protein Logical. If \code{TRUE}, z-scores each protein across cells before plotting,
+#'   matching the gene scaling logic. If \code{FALSE}, uses raw fetched values (default = TRUE).
 #' @param res Numeric. Resolution of the output PNG in DPI (default = 300).
 #'
-#' @return NULL. Heatmap is saved to file.
+#' @return A \code{ComplexHeatmap} object. The heatmap is also saved to file if \code{file_name}
+#'   is provided.
 #' @export
 heatmap_cell_level <- function(object,
                                features,
                                idents,
                                colors,
-                               split_by_cluster = T,
-                               cluster_rows = F,
-                               cluster_columns = F,
+                               split_by_cluster = TRUE,
+                               cluster_rows = FALSE,
+                               cluster_columns = FALSE,
+                               cluster_groups = FALSE,
+                               show_legend = FALSE,
+                               group_order = NULL,
                                downsample = FALSE,
                                file_name = NULL,
                                zlim = c(-2, 2),
                                width = 6,
                                height = NULL,
                                fontsize = 3,
+                               bold_genes = NULL,
+                               transpose = FALSE,
+                               protein_features = NULL,
+                               protein_zlim = c(-2, 2),
+                               scale_protein = TRUE,
                                res = 300) {
   
   meta <- object@meta.data
@@ -875,17 +901,14 @@ heatmap_cell_level <- function(object,
     group_sizes <- table(group_ids)
     
     if (is.logical(downsample) && downsample == TRUE) {
-      # Downsample to smallest group size
       target_n <- min(group_sizes)
       message("Downsampling each group to ", target_n, " cells (smallest group size)")
     } else if (is.numeric(downsample)) {
-      # Downsample to specified number
       target_n <- downsample
       message("Downsampling each group to ", target_n, " cells")
     }
     
-    # Sample cells from each group
-    set.seed(123)  # For reproducibility
+    set.seed(123)
     sampled_cells <- unlist(lapply(levels(group_ids), function(grp) {
       cells_in_group <- rownames(meta)[group_ids == grp]
       if (length(cells_in_group) <= target_n) {
@@ -895,12 +918,73 @@ heatmap_cell_level <- function(object,
       }
     }))
     
-    # Subset matrix and metadata
     mat <- mat[, sampled_cells]
     meta <- meta[sampled_cells, ]
   }
   
-  if(is.null(height)) {
+  # --- Build protein matrix ---
+  p_prot <- NULL
+  if (!is.null(protein_features)) {
+    
+    if (transpose) {
+      all_prot_df   <- Seurat::FetchData(object, vars = protein_features, cells = rownames(object@meta.data))
+      cells_with_prot <- rownames(all_prot_df)[rowSums(!is.na(all_prot_df)) > 0]
+      
+      target_n_prot <- ncol(mat) / length(levels(meta[[idents]]))
+      
+      set.seed(456)
+      prot_cells <- unlist(lapply(levels(meta[[idents]]), function(grp) {
+        grp_all_cells  <- rownames(object@meta.data)[object@meta.data[[idents]] == grp]
+        grp_prot_cells <- intersect(grp_all_cells, cells_with_prot)
+        grp_no_prot    <- setdiff(grp_all_cells, cells_with_prot)
+        
+        if (length(grp_prot_cells) >= target_n_prot) {
+          sample(grp_prot_cells, target_n_prot)
+        } else {
+          n_fill <- target_n_prot - length(grp_prot_cells)
+          n_fill <- min(n_fill, length(grp_no_prot))
+          c(grp_prot_cells, sample(grp_no_prot, n_fill))
+        }
+      }))
+      
+      message("Protein cell selection: ", length(prot_cells), " cells (prioritizing protein-available cells).")
+      
+    } else {
+      prot_cells <- rownames(meta)
+    }
+    
+    prot_df <- Seurat::FetchData(object, vars = protein_features, cells = prot_cells)
+    
+    if (transpose) {
+      missing_cells <- setdiff(prot_cells, rownames(prot_df))
+      if (length(missing_cells) > 0) {
+        na_rows <- matrix(NA, nrow = length(missing_cells), ncol = length(protein_features),
+                          dimnames = list(missing_cells, protein_features))
+        prot_df <- rbind(prot_df, as.data.frame(na_rows))
+      }
+      prot_df <- prot_df[prot_cells, , drop = FALSE]
+    } else {
+      prot_df <- prot_df[rowSums(!is.na(prot_df)) > 0, , drop = FALSE]
+    }
+    
+    n_na         <- sum(is.na(prot_df))
+    n_cells_prot <- nrow(prot_df)
+    message(n_cells_prot, " cells in protein matrix (vs ", ncol(mat), " cells in gene matrix).")
+    if (n_na > 0) message(n_na, " NA values will be shown in grey.")
+    
+    prot <- t(as.matrix(prot_df))
+    
+    prot_meta_idents <- object@meta.data[colnames(prot), idents, drop = FALSE]
+    prot_idents      <- factor(prot_meta_idents[[idents]], levels = levels(meta[[idents]]))
+    
+    if (scale_protein) {
+      prot <- t(scale(t(prot), center = TRUE, scale = TRUE))
+      prot <- pmin(pmax(prot, protein_zlim[1]), protein_zlim[2])
+      message("Protein data z-scored across cells.")
+    }
+  }
+  
+  if (is.null(height)) {
     n_genes <- nrow(mat)
     height <- 8 + (n_genes - 120) * (2 / 50)
     height <- max(height, 6)
@@ -910,54 +994,143 @@ heatmap_cell_level <- function(object,
   group_colors <- colors[1:length(unique(meta[[idents]]))]
   names(group_colors) <- unique(meta[[idents]])
   
-  col_anno <- ComplexHeatmap::HeatmapAnnotation(
-    Group = meta[[idents]],
-    col = list(
-      Group = group_colors
-    ),
-    annotation_name_side = "left"
-  )
-  
   col_fun <- circlize::colorRamp2(
     breaks = c(zlim[1], 0, zlim[2]),
     colors = c("blue", "white", "red")
   )
   
-  if(split_by_cluster == T){
-    p <- ComplexHeatmap::Heatmap(
-      mat,
-      name = "Expression",
-      col = col_fun,
-      top_annotation = col_anno,
-      cluster_rows = cluster_rows,
-      cluster_columns = cluster_columns,
-      column_split = meta[[idents]],
-      show_column_names = FALSE,
-      show_row_names = TRUE,
-      row_title = "Genes",
-      column_title = "Cells by groups",
-      row_names_gp = grid::gpar(fontsize = fontsize),
-      heatmap_legend_param = list(title = "Z-score")
-    )
-  } else {
-    p <- ComplexHeatmap::Heatmap(
-      mat,
-      name = "Expression",
-      col = col_fun,
-      top_annotation = col_anno,
-      cluster_rows = cluster_rows,
-      cluster_columns = cluster_columns,
-      column_split = NULL,
-      show_column_names = FALSE,
-      show_row_names = TRUE,
-      row_title = "Genes",
-      column_title = "Cells by groups",
-      row_names_gp = grid::gpar(fontsize = fontsize),
-      heatmap_legend_param = list(title = "Z-score")
-    )
+  # --- Cluster groups by mean expression similarity ---
+  if (cluster_groups && split_by_cluster) {
+    if (!is.null(group_order)) {
+      warning("Both cluster_groups and group_order specified; group_order takes precedence.")
+    } else {
+      group_means <- sapply(levels(meta[[idents]]), function(grp) {
+        cells <- rownames(meta)[meta[[idents]] == grp]
+        rowMeans(mat[, cells, drop = FALSE])
+      })
+      hc_order       <- hclust(dist(t(group_means)))$order
+      ordered_levels <- levels(meta[[idents]])[hc_order]
+      message("Group order by similarity: ", paste(ordered_levels, collapse = " > "))
+      meta[[idents]] <- factor(meta[[idents]], levels = ordered_levels)
+      group_colors   <- group_colors[ordered_levels]
+    }
   }
   
-  if(!is.null(file_name)){
+  # --- Manual group order ---
+  if (!is.null(group_order)) {
+    missing_groups <- setdiff(group_order, levels(meta[[idents]]))
+    if (length(missing_groups) > 0) {
+      stop("group_order contains levels not found in idents: ", paste(missing_groups, collapse = ", "))
+    }
+    meta[[idents]] <- factor(meta[[idents]], levels = group_order)
+    group_colors   <- group_colors[group_order]
+  }
+  
+  prot_col_fun <- circlize::colorRamp2(
+    breaks = c(protein_zlim[1], 0, protein_zlim[2]),
+    colors = c("#4ab340", "white", "orange")
+  )
+  
+  # --- Build fontface vector for bold gene labels ---
+  # In normal mode: genes are rows; in transpose mode: genes are columns (after t(mat))
+  if (!is.null(bold_genes)) {
+    gene_fontface <- ifelse(rownames(mat) %in% bold_genes, "bold", "plain")
+  } else {
+    gene_fontface <- "plain"
+  }
+  
+  # --- Transpose block ---
+  if (transpose) {
+    mat <- t(mat)
+    meta[[idents]] <- factor(meta[[idents]], levels = rev(levels(meta[[idents]])))
+    
+    row_anno <- ComplexHeatmap::rowAnnotation(
+      Cluster = meta[[idents]],
+      col = list(Cluster = group_colors),
+      annotation_name_side = "top",
+      show_legend = show_legend
+    )
+    
+    p <- ComplexHeatmap::Heatmap(
+      mat,
+      name = "Expression",
+      col = col_fun,
+      left_annotation = row_anno,
+      cluster_rows = cluster_columns,
+      cluster_columns = cluster_rows,
+      row_split = if (split_by_cluster) meta[[idents]] else NULL,
+      show_row_names = FALSE,
+      show_column_names = TRUE,
+      column_names_gp = grid::gpar(fontsize = fontsize, fontface = gene_fontface),
+      # row_title = "Cells by clusters",
+      column_title = "Genes",
+      heatmap_legend_param = list(title = "Z-score")
+    )
+    
+    if (!is.null(protein_features)) {
+      p_prot <- ComplexHeatmap::Heatmap(
+        t(prot),
+        name = "Protein",
+        col = prot_col_fun,
+        cluster_rows = FALSE,
+        cluster_columns = FALSE,
+        row_split = if (split_by_cluster) prot_idents else NULL,
+        show_row_names = FALSE,
+        show_column_names = TRUE,
+        column_names_gp = grid::gpar(fontsize = fontsize),
+        na_col = "grey80",
+        row_title = NULL,
+        column_title = "Protein",
+        heatmap_legend_param = list(title = ifelse(scale_protein, "Protein\nZ-score", "Protein"))
+      )
+      p <- p + p_prot
+    }
+    
+  } else {
+    col_anno <- ComplexHeatmap::HeatmapAnnotation(
+      Cluster = meta[[idents]],
+      col = list(Cluster = group_colors),
+      annotation_name_side = "left",
+      show_legend = show_legend
+    )
+    
+    p <- ComplexHeatmap::Heatmap(
+      mat,
+      name = "Expression",
+      col = col_fun,
+      top_annotation = col_anno,
+      cluster_rows = cluster_rows,
+      cluster_columns = cluster_columns,
+      column_split = if (split_by_cluster) meta[[idents]] else NULL,
+      show_column_names = FALSE,
+      show_row_names = TRUE,
+      row_title = "Genes",
+      # column_title = "Cells by clusters",
+      row_names_gp = grid::gpar(fontsize = fontsize, fontface = gene_fontface),
+      heatmap_legend_param = list(title = "Z-score")
+    )
+    
+    if (!is.null(protein_features)) {
+      p_prot <- ComplexHeatmap::Heatmap(
+        prot,
+        name = "Protein",
+        col = prot_col_fun,
+        cluster_rows = FALSE,
+        cluster_columns = FALSE,
+        column_split = if (split_by_cluster) prot_idents else NULL,
+        show_column_names = FALSE,
+        show_row_names = TRUE,
+        row_names_gp = grid::gpar(fontsize = fontsize),
+        na_col = "grey80",
+        row_title = "Protein",
+        column_title = NULL,
+        heatmap_legend_param = list(title = ifelse(scale_protein, "Protein\nZ-score", "Protein"))
+      )
+      p <- p %v% p_prot
+    }
+  }
+  
+  if (!is.null(file_name)) {
     png(file_name, width = width, height = height, units = "in", res = res)
     ComplexHeatmap::draw(p)
     dev.off()
@@ -1188,7 +1361,7 @@ stacked_bar_plots <- function(object,
     ggplot2::labs(
       x = layers[1],
       y = "Percentage (%)",
-      fill = "Group",
+      fill = "Cluster",
       title = title
     ) +
     ggplot2::theme(
@@ -1618,7 +1791,7 @@ optimize_single_cell <- function(object = NULL,
     markers <- FindAllMarkers(object, min.pct = min.pct)
     dge <- select_marker_genes_score(markers, log2fc_cutoff = log2fc_cutoff)
     
-    write.csv(dge, paste0(temp_clusters, "_dge.csv"))
+    write.csv(markers, paste0(temp_clusters, "_dge.csv"))
     
     if(is.list(features)){
       dotplots_features <- c(features, list(dge$gene))

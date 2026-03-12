@@ -2,7 +2,7 @@
 % Please edit documentation in R/customized_vis.R
 \name{density_plot}
 \alias{density_plot}
-\title{Generate Python Code for Scanpy UMAP Density Plots}
+\title{Run Scanpy UMAP Density Plots}
 \usage{
 density_plot(
   file_name,
@@ -26,7 +26,9 @@ in inches for each density plot panel. Default is \code{c(4, 4)}.}
 \item{max_per_row}{Integer specifying the maximum number of plots per row.
 Used to determine the number of columns in multi-panel figures.}
 
-\item{colors}{the color for the densest area. If NULL, use inferno by default.}
+\item{color}{Character vector of colors. If \code{NULL}, uses inferno by default.
+If a single color is provided, the colormap runs from the 20\% point of a
+lightgrey-to-color gradient (as the zero-density baseline) to the color itself.}
 }
 \value{
 A single character string containing executable Python code.
@@ -38,34 +40,4 @@ produces UMAP density plots for specified metadata variables in an
 AnnData object. It is designed for cross-language Seurat → Scanpy
 workflows, where an R object is exported to \code{.h5ad} format and
 processed in Python using \code{scanpy}.
-}
-\details{
-The generated Python code will:
-\enumerate{
-\item Import required libraries (\code{scanpy} and \code{matplotlib}).
-\item Read the \code{.h5ad} file into an AnnData object.
-\item For each metadata variable in \code{density_specs}, compute and plot
-UMAP density maps using \code{scanpy.tl.embedding_density()} and
-\code{scanpy.pl.embedding_density()}.
-\item Save each density plot to a PNG file named
-\code{density_<meta_col>.png}.
-}
-}
-\examples{
-\dontrun{
-density_plot_specs <- list(
-  cohort_tp = list(order = c("Chronic Pre-DAA", "Chronic Post-DAA")),
-  protein_group = list(order = c("Group1", "Group2"))
-)
-
-py_code <- density_plot(
-  file_name = "mydata.h5ad",
-  density_specs = density_plot_specs
-)
-
-}
-
-}
-\seealso{
-\code{\link[reticulate]{py_run_string}}
 }

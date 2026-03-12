@@ -12,7 +12,9 @@ boxplot_paired_points(
   pre_label = "Baseline",
   post_label = "Post-Treatment",
   facet_col = NULL,
-  value_type = "mean"
+  value_type = "mean",
+  add_stats = FALSE,
+  test_method = "wilcox.test"
 )
 }
 \arguments{
@@ -32,9 +34,15 @@ boxplot_paired_points(
 
 \item{value_type}{Character string indicating whether to plot the mean ("mean") or median ("median")
 expression per patient. Default is "mean".}
+
+\item{add_stats}{Logical. If \code{TRUE}, adds a paired statistical test result above the comparison
+bracket (default = FALSE).}
+
+\item{test_method}{Character. Statistical test to use. One of \code{"wilcox.test"} (Wilcoxon signed-rank,
+default) or \code{"t.test"} (paired t-test).}
 }
 \value{
-A ggplot object showing paired expression changes.
+A list with \code{plot} (ggplot object) and \code{data} (paired data frame).
 }
 \description{
 Generates boxplots of gene expression (pre vs. post timepoint) with
