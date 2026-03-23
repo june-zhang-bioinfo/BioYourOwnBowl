@@ -1,6 +1,6 @@
 #' Plot Features with Dynamic Layout and Cutoffs
 #'
-#' Generates FeaturePlots for selected features from a Seurat object, 
+#' Generates FeaturePlots for selected features from a Seurat object,
 #' adjusting the plot grid dynamically based on the number of features.
 #' Saves both a scaled and an original version of the plot as PNGs.
 #'
@@ -28,38 +28,38 @@ features_plots <- function(object,
                            colors = NULL,
                            file_name = NULL
 ) {
-  
+
   # Ensure selected features exist in the object
   features_to_plot <- intersect(features, c(rownames(object), colnames(object@meta.data)))
   n_features <- length(features_to_plot)
   if (n_features == 0) stop("No selected features found in the Seurat object.")
-  
+
   # Create original plot
   if (!is.null(colors)) {
     p_original <- FeaturePlot_scCustom(seurat_object = object, features = features_to_plot, num_columns = n_col, pt.size = pt.size, colors_use = colors, na_color = "grey90")
   } else {
     p_original <- FeaturePlot_scCustom(seurat_object = object, features = features_to_plot, num_columns = n_col, pt.size = pt.size)
   }
-  
+
   # Calculate grid layout
   n_row <- ceiling(n_features / n_col)
   width_scaled <- base_width * n_col
   height_scaled <- base_height * n_row
-  
+
   # Save original plot
   if (!is.null(file_name)) {
     png(paste0(file_name, "_original.png"), width = width_scaled, height = height_scaled, res = 300)
     print(p_original)
     dev.off()
   }
-  
+
   # Calculate cutoffs per feature (user-specified percentile)
   percentiles <- sapply(features_to_plot, function(g) {
     q <- quantile(FetchData(object, vars = g), percentile, na.rm = TRUE, layer = "data")
     if (q == 0) q <- 1e-9
     return(q)
   })
-  
+
   # Create individual scaled plots with custom cutoff
   plots <- purrr::map2(
     features_to_plot,
@@ -88,16 +88,16 @@ features_plots <- function(object,
       }
     }
   )
-  
+
   p_scaled_wrapped <- patchwork::wrap_plots(plots, ncol = n_col)
-  
+
   # Save scaled plots
   if (!is.null(file_name)) {
     png(paste0(file_name, "_scaled.png"), width = width_scaled, height = height_scaled, res = 300)
     print(p_scaled_wrapped)
     dev.off()
   }
-  
+
   return(list(
     original = p_original,
     scaled = p_scaled_wrapped
@@ -195,12 +195,12 @@ violin_plots <- function(object,
                            cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, 1),
                            symbols   = c("****", "***", "**", "*", "ns")
                          )) {
-  
+
   # 1. Set active identity
   levels <- object[[idents]] %>% unlist() %>% as.character() %>% na.omit() %>%
     stringr::str_sort() %>% unique()
   Idents(object) <- factor(object[[idents]] %>% unlist() %>% as.character(), levels = levels)
-  
+
   # 2. Subset cells if groups specified
   if (!is.null(groups)) {
     cells_to_use <- Seurat::WhichCells(object, idents = groups)
@@ -208,36 +208,36 @@ violin_plots <- function(object,
     cells_to_use <- colnames(object)
     groups <- levels(Idents(object))
   }
-  
+
   # 3. Fetch expression data
   features <- intersect(features, c(rownames(object), colnames(object@meta.data)))
   expr_mat  <- Seurat::FetchData(object, vars = features, cells = cells_to_use, layer = "data")
   expr_mat$ident <- Seurat::Idents(object)[rownames(expr_mat)]
-  
+
   # 4. Convert to long format and drop NAs
   expr_long <- expr_mat %>%
     tibble::rownames_to_column(var = "cell") %>%
     tidyr::pivot_longer(cols = dplyr::all_of(features), names_to = "gene", values_to = "expression") %>%
     dplyr::filter(!is.na(ident), !is.na(expression))
-  
+
   # 5. Set factor levels
   expr_long$ident <- factor(expr_long$ident, levels = groups)
   expr_long$gene  <- factor(expr_long$gene,  levels = features)
-  
+
   # 6. Warn about dropped NAs
   n_na <- sum(is.na(expr_mat$ident) | rowSums(is.na(expr_mat[, features, drop = FALSE])) > 0)
   if (n_na > 0) message(n_na, " cell(s) with NA ident or expression values were removed.")
-  
+
   # 7. Subset non-zero expression for violin shape only
   data_for_violin <- dplyr::filter(expr_long, expression > 0)
-  
+
   # 8. Dynamic height
   if (is.null(height)) {
     n_rows          <- ceiling(length(features) / ncol)
     height_per_row  <- ifelse(add_stats, 3.5, 3)
     height          <- max(3, n_rows * height_per_row)
   }
-  
+
   # 9. Generate all pairwise comparisons if not provided
   if (add_stats) {
     if (length(groups) < 2) {
@@ -247,14 +247,14 @@ violin_plots <- function(object,
       comparisons <- utils::combn(groups, 2, simplify = FALSE)
     }
   }
-  
+
   # 10. Compute per-gene, per-comparison p-values manually
   if (add_stats) {
     test_fn <- match.fun(test_method)
-    
+
     stat_df <- purrr::map_dfr(features, function(g) {
       gene_data <- dplyr::filter(expr_long, gene == g)
-      
+
       # Raw p-value for each comparison
       raw_p <- sapply(comparisons, function(comp) {
         x <- dplyr::filter(gene_data, ident == comp[1])$expression
@@ -262,10 +262,10 @@ violin_plots <- function(object,
         if (length(x) < 2 || length(y) < 2) return(NA_real_)
         tryCatch(test_fn(x, y)$p.value, error = function(e) NA_real_)
       })
-      
+
       # Adjust p-values across comparisons within this gene
       adj_p <- p.adjust(raw_p, method = p_adjust_method)
-      
+
       # Convert to significance symbols
       syms <- symnum(
         adj_p,
@@ -274,12 +274,12 @@ violin_plots <- function(object,
         na         = "ns",
         corr       = FALSE
       ) %>% as.character()
-      
+
       # Y positions: stack brackets above the max expression for this gene
       y_max   <- max(gene_data$expression, na.rm = TRUE)
       y_range <- diff(range(gene_data$expression, na.rm = TRUE))
       step    <- y_range * 0.12
-      
+
       data.frame(
         gene        = g,
         xmin        = sapply(comparisons, `[`, 1),
@@ -291,12 +291,12 @@ violin_plots <- function(object,
         stringsAsFactors = FALSE
       )
     })
-    
+
     # Only keep significant or all? Keep all so user sees "ns" too
     # Filter out NA tests
     stat_df <- dplyr::filter(stat_df, !is.na(p_val))
   }
-  
+
   # 11. Build plot
   p <- ggplot2::ggplot(expr_long, ggplot2::aes(x = ident, y = expression, color = ident)) +
     ggplot2::geom_violin(
@@ -334,7 +334,7 @@ violin_plots <- function(object,
       plot.background  = ggplot2::element_rect(fill = "white", color = NA)
     ) +
     ggplot2::labs(x = "Identity", y = "Expression")
-  
+
   # 12. Add per-gene significance brackets via ggsignif
   if (add_stats) {
     p <- p + ggsignif::geom_signif(
@@ -352,18 +352,18 @@ violin_plots <- function(object,
       size        = 0.3
     )
   }
-  
+
   # 13. Apply colors (positional, assigned to groups in order)
   if (!is.null(colors)) {
     named_colors <- setNames(colors[seq_along(groups)], groups)
     p <- p + ggplot2::scale_color_manual(values = named_colors, na.translate = FALSE)
   }
-  
+
   # 14. Save if requested
   if (!is.null(file_name)) {
     ggplot2::ggsave(file_name, plot = p, height = height, width = width)
   }
-  
+
   return(p)
 }
 
@@ -371,8 +371,8 @@ violin_plots <- function(object,
 
 #' Save Split DimPlots from a Seurat Object
 #'
-#' This function generates and saves UMAP/tSNE DimPlots from a Seurat object, 
-#' split by a specified metadata variable. The plots are arranged automatically 
+#' This function generates and saves UMAP/tSNE DimPlots from a Seurat object,
+#' split by a specified metadata variable. The plots are arranged automatically
 #' based on the number of levels in the splitting variable.
 #'
 #' @param object A \code{Seurat} object.
@@ -402,15 +402,15 @@ dimplots_split <- function(object, split_var, group_var, colors, file_name = NUL
   if (length(split_var) != 1) {
     stop("split_var must be a single metadata column name (character string).")
   }
-  
+
   num_levels <- length(unique(object@meta.data[[split_var]]))
-  
+
   num_columns <- ceiling(sqrt(num_levels))
   num_rows <- ceiling(num_levels / num_columns)
-  
+
   width <- num_columns * 3
   height <- num_rows * 3
-  
+
   p <- Seurat::DimPlot(
     object,
     split.by = split_var,
@@ -419,7 +419,7 @@ dimplots_split <- function(object, split_var, group_var, colors, file_name = NUL
     ncol = num_columns,
     cols = colors
   )
-  
+
   if(!is.null(file_name)){
     ggplot2::ggsave(
       filename = file_name,
@@ -439,7 +439,7 @@ dimplots_split <- function(object, split_var, group_var, colors, file_name = NUL
 setup_python <- function() {
   # Check for Python with numpy
   cfg <- reticulate::py_discover_config(required_module = "numpy", use_environment = NULL)
-  
+
   # Install Python if none found OR if numpy isn't available
   if (is.null(cfg$python) || is.null(cfg$numpy)) {
     message("No suitable Python found. Installing Python 3.10 via reticulate...")
@@ -447,19 +447,19 @@ setup_python <- function() {
     # Update config after installation
     cfg <- reticulate::py_discover_config()
   }
-  
+
   env_name <- "r-reticulate"
   env_path <- file.path(reticulate::virtualenv_root(), env_name)
-  
+
   if (!dir.exists(env_path)) {
     message("Creating virtual environment r-reticulate...")
     reticulate::virtualenv_create(env_name, python = cfg$python)
     message("Installing packages: scanpy, anndata...")
     reticulate::virtualenv_install(env_name, c("scanpy", "anndata"))
   }
-  
+
   reticulate::use_virtualenv(env_name, required = TRUE)
-  
+
   # Verify installation
   tryCatch({
     reticulate::import("scanpy")
@@ -504,26 +504,26 @@ prepare_h5ad <- function(
     normalize = TRUE
 ) {
   cnmf <- subset(object, features = features)
-  
+
   if (normalize) {
     cnmf <- Seurat::NormalizeData(cnmf)
   }
-  
+
   if (is.null(assay)) {
     assay <- Seurat::DefaultAssay(cnmf)
   }
-  
+
   # cnmf@assays[[assay]]$counts <- cnmf@assays[[assay]]$data
   # cnmf@assays[[assay]]$data <- NULL
   # cnmf@assays[[assay]]$scale.data <- NULL
-  
+
   cnmf@meta.data <- subset(cnmf@meta.data, select = metadata_vars)
-  
+
   sce <- convert_seurat_to_sce(cnmf)
   ad <- convert_to_anndata(sce, assayName = "data", useAltExp = TRUE)
-  
+
   write_h5ad(ad, file_name)
-  
+
   message("Saved AnnData file: ", file_name)
   invisible(file_name)
 }
@@ -559,7 +559,7 @@ density_plot <- function(file_name, density_specs,
                          base_figsize = c(4, 4),
                          max_per_row  = 4,
                          color        = NULL) {
-  
+
   # --- Build colormap colors vector ---
   if (!is.null(color)) {
     if (length(color) > 1) {
@@ -581,20 +581,20 @@ density_plot <- function(file_name, density_specs,
     cmap_code     <- ""
     color_map_arg <- "color_map='inferno'"
   }
-  
+
   code_blocks <- c(
     "import scanpy as sc",
     "import matplotlib.pyplot as plt",
     "from matplotlib.colors import LinearSegmentedColormap",
     glue::glue("adata = sc.read_h5ad('{file_name}')")
   )
-  
+
   for (meta_col in names(density_specs)) {
     groups     <- density_specs[[meta_col]]$order
     ncols      <- ifelse(length(groups) < max_per_row, length(groups), max_per_row)
     fig_width  <- base_figsize[1]
     fig_height <- base_figsize[2]
-    
+
     code_block <- glue::glue("
 {cmap_code}
 sc.tl.embedding_density(adata, basis='umap', groupby='{meta_col}')
@@ -613,12 +613,12 @@ with plt.rc_context({{'figure.figsize': ({fig_width}, {fig_height})}}):
 plt.savefig('density_{meta_col}.png', bbox_inches='tight', dpi=300)
 plt.close('all')
 ")
-    
+
     code_blocks <- c(code_blocks, code_block)
   }
-  
+
   reticulate::py_run_string(paste(code_blocks, collapse = "\n"))
-  
+
   return(paste(code_blocks, collapse = "\n"))
 }
 
@@ -736,25 +736,25 @@ volcano_plots <- function(object,
                           boxed_labels = TRUE,
                           draw_connectors = TRUE,
                           max_overlaps = 50) {
-  
+
   # Validate inputs
   if (!idents %in% colnames(object@meta.data)) {
     stop("Column '", idents, "' not found in metadata")
   }
-  
+
   # if(is.null(file_name)){file_name <- paste0(ident1, "_vs_", ident2)}
-  
+
   # Count cells in each group
   n1 <- sum(object[[idents, drop = TRUE]] == ident1, na.rm = TRUE)
   n2 <- sum(object[[idents, drop = TRUE]] == ident2, na.rm = TRUE)
-  
+
   if (n1 == 0 || n2 == 0) {
     stop("One or both groups have zero cells. Check ident1 and ident2 values.")
   }
-  
+
   # Set active identity
   Idents(object) <- object[[idents]] %>% unlist() %>% as.character()
-  
+
   # Perform differential expression
   message("Performing differential expression: ", ident1, " vs. ", ident2)
   markers <- FindMarkers(
@@ -764,22 +764,22 @@ volcano_plots <- function(object,
     logfc.threshold = 0,
     min.pct = 0
   )
-  
+
   markers$gene <- rownames(markers)
   markers$p_val[markers$p_val == 0] <- .Machine$double.xmin
-  
+
   deg <- subset(markers, abs(avg_log2FC) > log2fc_cutoff & p_val_adj < p_cutoff)
-  
+
   # Count DEGs
   deg_up <- sum(markers$avg_log2FC > log2fc_cutoff & markers$p_val_adj < p_cutoff, na.rm = TRUE)
   deg_down <- sum(markers$avg_log2FC < -log2fc_cutoff & markers$p_val_adj < p_cutoff, na.rm = TRUE)
-  
+
   # Prepare caption
   caption_text <- paste0(
     n1, " cells vs. ", n2, " cells\n",
     deg_up, " genes ↑ & ", deg_down, " genes ↓"
   )
-  
+
   # Determine label settings based on show_labels
   if (is.logical(show_labels)) {
     if (show_labels) {
@@ -804,7 +804,7 @@ volcano_plots <- function(object,
   } else {
     stop("show_labels must be TRUE, FALSE, or a character vector of gene names")
   }
-  
+
   # Create volcano plot function
   create_volcano <- function(with_labels = TRUE) {
     if (!with_labels) {
@@ -850,15 +850,15 @@ volcano_plots <- function(object,
       )
     }
   }
-  
+
   if (is.character(show_labels)) {
     p <- create_volcano(with_labels = TRUE)
   } else {
     p <- create_volcano(with_labels = isTRUE(show_labels))
   }
-  
+
   print(p)
-  
+
   # If show_labels is a character vector, save both versions
   if(!is.null(file_name)){
     png(file_name, res = resolution, height = height, width = width)
@@ -905,9 +905,9 @@ double_volcano <- function(
     min.pct        = 0.01,
     color_palette  = NULL,
     selected_genes = NULL) {
-  
+
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
-  
+
   # --- 8 semantic group names, independent of color ---
   # x_only_up:    sig up in comparison 1 only
   # x_only_down:  sig down in comparison 1 only
@@ -917,7 +917,7 @@ double_volcano <- function(
   # both_down:    sig down in both
   # x_up_y_down:  sig up in 1, down in 2
   # x_down_y_up:  sig down in 1, up in 2
-  
+
   default_palette <- c(
     "x_only_up"   = "blue",
     "x_only_down" = "darkgreen",
@@ -928,7 +928,7 @@ double_volcano <- function(
     "x_up_y_down" = "#27c8e8",
     "x_down_y_up" = "#FFA500"
   )
-  
+
   if (is.null(color_palette)) {
     color_palette <- default_palette
   } else {
@@ -939,22 +939,22 @@ double_volcano <- function(
       color_palette <- c(color_palette, default_palette[missing_groups])
     }
   }
-  
+
   Idents(object) <- object$Cohort_tp_mutation
   plot_files  <- list()
   merged_list <- list()
-  
+
   for (i in seq_len(nrow(comparison_table))) {
     idents <- unlist(comparison_table[i, 1:4])
-    
+
     markers1 <- Seurat::FindMarkers(object, ident.1 = idents[1], ident.2 = idents[2],
                                     logfc.threshold = 0, min.pct = min.pct)
     markers2 <- Seurat::FindMarkers(object, ident.1 = idents[3], ident.2 = idents[4],
                                     logfc.threshold = 0, min.pct = min.pct)
-    
+
     c1 <- paste0(idents[1], " vs. ", idents[2])
     c2 <- paste0(idents[3], " vs. ", idents[4])
-    
+
     merged <- dplyr::mutate(markers1, gene = rownames(markers1)) %>%
       dplyr::inner_join(
         dplyr::mutate(markers2, gene = rownames(markers2)),
@@ -978,17 +978,17 @@ double_volcano <- function(
           TRUE ~ "Other"
         )
       )
-    
+
     merged_list[[paste0(c1, " vs ", c2)]] <- merged
-    
+
     df_gray  <- dplyr::filter(merged, color_group == "Other")
     df_color <- dplyr::filter(merged, color_group != "Other")
-    
+
     if (nrow(df_color) == 0) {
       message("No significant genes in row ", i, ". Skipping.")
       next
     }
-    
+
     group_counts   <- dplyr::count(df_color, color_group)
     label_positions <- data.frame(
       color_group = c("x_only_up", "x_only_down", "y_only_up",   "y_only_down",
@@ -999,12 +999,12 @@ double_volcano <- function(
             min(merged$avg_log2FC_2), max(merged$avg_log2FC_2),  max(merged$avg_log2FC_2), min(merged$avg_log2FC_2))
     ) %>%
       dplyr::left_join(group_counts, by = "color_group")
-    
+
     x_min <- min(merged$avg_log2FC_1)
     x_max <- max(merged$avg_log2FC_1)
     y_min <- min(merged$avg_log2FC_2)
     y_max <- max(merged$avg_log2FC_2)
-    
+
     # Parse ident names for directional axis labels
     c1_parts <- strsplit(c1, " vs\\. ")[[1]]
     c2_parts <- strsplit(c2, " vs\\. ")[[1]]
@@ -1012,7 +1012,7 @@ double_volcano <- function(
     x_label_right <- paste0("up in ", c1_parts[1], " \u2192")
     y_label_down  <- paste0("\u2190 up in ", c2_parts[2])
     y_label_up    <- paste0("up in ", c2_parts[1], " \u2192")
-    
+
     p <- ggplot2::ggplot() +
       ggplot2::geom_point(data = df_gray,
                           ggplot2::aes(x = avg_log2FC_1, y = avg_log2FC_2),
@@ -1032,7 +1032,7 @@ double_volcano <- function(
         title = "Log2FC",
         color = "Group"
       ) +
-      
+
       ggplot2::theme_classic() +
       ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"),
                      plot.margin  = ggplot2::margin(t = 5, r = 5, b = 10, l = 5, unit = "pt")) +
@@ -1060,7 +1060,7 @@ double_volcano <- function(
       ggplot2::annotate("text", x = -Inf, y = y_max, label = y_label_up,
                         hjust = 1, vjust = -1, size = 3.5, color = "gray30", angle = 90) +
       ggplot2::labs(x = NULL, y = NULL, title = "Log2FC", color = "Group")
-    
+
     outfile <- file.path(output_dir,
                          paste0(gsub(" ", "_", c1), "_", gsub(" ", "_", c2), ".png"))
     ggplot2::ggsave(outfile, p, width = 9, height = 8)
@@ -1070,7 +1070,7 @@ double_volcano <- function(
               file = file.path(output_dir,
                                paste0(gsub(" ", "_", c1), "_", gsub(" ", "_", c2), ".csv")))
   }
-  
+
   invisible(merged_list)
 }
 
@@ -1103,29 +1103,29 @@ tcr_treemaps <- function(
     color_palette = NULL
 ) {
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
-  
+
   meta_tcr <- object@meta.data
   meta_tcr <- meta_tcr[!is.na(meta_tcr$raw_clonotype_id), ]
-  
+
   # Store valid epitope-patient pairs
   plot_pairs <- data.frame()
-  
+
   for (epitope in top_epitope) {
     temp_meta <- subset(meta_tcr, Specificity == epitope)
     patients <- unique(temp_meta$participant)
     for (p in patients) {
       temp_meta_patient <- subset(temp_meta, participant == p)
       if (nrow(temp_meta_patient) >= min_cells) {
-        plot_pairs <- rbind(plot_pairs, 
-                            data.frame(epitope = epitope, 
+        plot_pairs <- rbind(plot_pairs,
+                            data.frame(epitope = epitope,
                                        patient = p,
                                        stringsAsFactors = FALSE))
       }
     }
   }
-  
+
   plot_files <- c()
-  
+
   # Process each epitope
   for (epitope in unique(plot_pairs$epitope)) {
     # Generate colors once per epitope
@@ -1133,32 +1133,32 @@ tcr_treemaps <- function(
     color_df <- as.data.frame(sort(table(temp_df$raw_clonotype_id), decreasing = TRUE))
     color_df$Freq <- NULL
     colnames(color_df) <- "Clonotype"
-    
+
     if (is.null(color_palette)) {
       base_colors <- RColorBrewer::brewer.pal(12, "Set3")
     } else {
       base_colors <- color_palette
     }
-    
+
     set.seed(match(epitope, unique(plot_pairs$epitope)))
     color_df$Color <- sample(base_colors[(1:nrow(color_df)) %% length(base_colors) + 1])
-    
+
     # Get patients for this epitope
     patients_for_epitope <- plot_pairs$patient[plot_pairs$epitope == epitope]
-    
+
     # Create treemap for each patient
     for (patient in patients_for_epitope) {
-      temp_df <- subset(meta_tcr, 
+      temp_df <- subset(meta_tcr,
                         participant == patient & Specificity == epitope)
-      tree <- left_join(as.data.frame(table(temp_df$raw_clonotype_id)), 
+      tree <- left_join(as.data.frame(table(temp_df$raw_clonotype_id)),
                         color_df,
                         by = c("Var1" = "Clonotype"))
       colnames(tree) <- c("Clonotype", "Count", "Color")
       tree$Clonotype <- paste(tree$Clonotype, paste0("[", tree$Count, "]"))
-      
+
       title_text <- paste(patient, "-", epitope)
       outfile <- file.path(output_dir, paste0(title_text, ".png"))
-      
+
       png(outfile, width = 2000, height = 2000, res = 400, units = "px")
       treemap::treemap(tree,
                        index = "Clonotype",
@@ -1170,11 +1170,11 @@ tcr_treemaps <- function(
                        border.lwds = 0.5,
                        fontface.labels = 1)
       dev.off()
-      
+
       plot_files <- c(plot_files, outfile)
     }
   }
-  
+
   message("Created ", length(plot_files), " treemap plots in ", output_dir)
   return(invisible(plot_files))
 }
@@ -1253,7 +1253,7 @@ tcr_treemaps <- function(
 #'   colors = my_colors,
 #'   cluster_rows = TRUE
 #' )
-#' 
+#'
 #' # With custom metadata columns
 #' heatmap_pseudobulk(
 #'   object = object,
@@ -1278,32 +1278,32 @@ heatmap_pseudobulk <- function(object,
                                             color_range = c(-2, 0, 2),
                                             color_palette = c("#4575b4", "white", "#d73027"),
                                             annotation_height = unit(4, "mm")) {
-  
+
   # Set default column names if NULL
   if (is.null(idents)) {
     idents <- "cohort_tp"
   }
-  
+
   if (is.null(pseudobulk_column)) {
     pseudobulk_column <- "Patient"
   }
-  
+
   cells_to_keep <- colnames(object)[object[[idents]] %>% unlist %in% groups]
   object <- subset(object, cells = cells_to_keep)
-  
+
   features <- intersect(features, rownames(object))
-  
+
   # --- Extract expression data ---
   expression_matrix <- as.data.frame(GetAssayData(object, layer = "data"))
   expression_matrix <- expression_matrix[features, ]
-  
+
   # --- Metadata for cohort and patient ---
   cell_metadata <- data.frame(
     cell = colnames(expression_matrix),
     cohort_tp = object[[idents, drop = TRUE]],
     patient_id = object[[pseudobulk_column, drop = TRUE]]
   )
-  
+
   # --- Aggregate expression by patient ---
   grouped_expression <- expression_matrix %>%
     tibble::rownames_to_column(var = "gene") %>%
@@ -1318,23 +1318,23 @@ heatmap_pseudobulk <- function(object,
       values_from = mean_expression,
       values_fill = list(mean_expression = 0)
     )
-  
+
   # --- Convert to matrix ---
   grouped_expression_matrix <- as.matrix(grouped_expression[, -c(1)])
   rownames(grouped_expression_matrix) <- grouped_expression$gene
   grouped_expression_matrix <- grouped_expression_matrix[features, ]
-  
+
   # --- Compute z-scores per gene (row) ---
   zscore_matrix <- t(scale(t(grouped_expression_matrix)))
   zscore_matrix[is.na(zscore_matrix)] <- 0
-  
+
   # --- Prepare cohort grouping with custom order ---
   # cohort_labels <- sapply(strsplit(colnames(zscore_matrix), " "), `[`, 1)
   cohort_labels <- sub(" [^ ]+$", "", colnames(zscore_matrix))
-  
+
   # Convert to factor with custom levels
   cohort_labels <- factor(cohort_labels, levels = groups)
-  
+
   # Reorder matrix columns by cohort_labels
   ord <- order(cohort_labels)
   zscore_matrix <- zscore_matrix[, ord]
@@ -1356,8 +1356,8 @@ heatmap_pseudobulk <- function(object,
   }
   colors <- colors[1: length(unique_cohorts)]
   names(colors) <- unique_cohorts
-  
-  
+
+
   # --- Column annotation ---
   ha <- HeatmapAnnotation(
     Cohort = cohort_labels,
@@ -1366,7 +1366,7 @@ heatmap_pseudobulk <- function(object,
     annotation_name_side = "left",
     simple_anno_size = annotation_height
   )
-  
+
   # --- Draw ComplexHeatmap ---
   hm <- Heatmap(
     zscore_matrix,
@@ -1379,7 +1379,7 @@ heatmap_pseudobulk <- function(object,
     col = circlize::colorRamp2(color_range, color_palette),
     heatmap_legend_param = list(title = heatmap_title)
   )
-  
+
   return(hm)
 }
 
@@ -1476,18 +1476,18 @@ heatmap_meta <- function(object,
                          annotation_colors = NULL,
                          file_name         = NULL,
                          ...) {
-  
+
   # 1. Set default idents column
   if (is.null(idents)) {
     idents <- "cohort_tp"
   }
-  
+
   # 2. Parse features — vector or data frame
   if (is.data.frame(features)) {
     feat_df      <- features
     gene_vec     <- as.character(feat_df[[1]])
     category_vec <- as.character(feat_df[[2]])
-    
+
     # Build row annotation df, preserving category order of first appearance
     category_levels <- unique(category_vec)
     gene_annotation <- data.frame(
@@ -1497,10 +1497,10 @@ heatmap_meta <- function(object,
     )
     colnames(gene_annotation) <- colnames(feat_df)[2]
     annot_col_name <- colnames(feat_df)[2]
-    
+
     # Compute gaps_row at category boundaries
     gaps_row <- which(diff(as.integer(factor(category_vec, levels = category_levels))) != 0)
-    
+
     # Build annotation colors: positional vector -> named list for pheatmap
     if (is.null(annotation_colors)) {
       color_vec <- scales::hue_pal()(length(category_levels))
@@ -1511,28 +1511,28 @@ heatmap_meta <- function(object,
       list(setNames(color_vec[seq_along(category_levels)], category_levels)),
       annot_col_name
     )
-    
+
   } else {
     gene_vec        <- as.character(features)
     gene_annotation <- NULL
     gaps_row        <- NULL
   }
-  
+
   # 3. Normalize if requested
   if (normalize) {
     object <- Seurat::NormalizeData(object)
   }
-  
+
   # 4. Intersect with available genes (preserving order)
   gene_vec <- intersect(gene_vec, rownames(object))
-  
+
   # 5. Extract expression data
   expression_matrix <- as.data.frame(Seurat::GetAssayData(object, layer = "data"))
   expression_matrix <- expression_matrix[gene_vec, ]
-  
+
   # 6. Add cell type annotations and summarize by group (mean)
   cell_annotations <- object[[idents, drop = TRUE]]
-  
+
   grouped_expression <- expression_matrix %>%
     tibble::rownames_to_column(var = "gene") %>%
     tidyr::pivot_longer(-gene, names_to = "cell", values_to = "expression") %>%
@@ -1543,13 +1543,13 @@ heatmap_meta <- function(object,
     dplyr::group_by(gene, cell_type) %>%
     dplyr::summarize(mean_expression = mean(expression), .groups = "drop") %>%
     tidyr::pivot_wider(names_from = cell_type, values_from = mean_expression)
-  
+
   # 7. Convert to matrix and order rows/columns
   grouped_expression_matrix <- as.matrix(grouped_expression[, -1])
   rownames(grouped_expression_matrix) <- grouped_expression$gene
   grouped_expression_matrix <- grouped_expression_matrix[gene_vec, ]
   grouped_expression_matrix <- grouped_expression_matrix[, groups]
-  
+
   # 8. Build bold row labels if requested
   if (!is.null(bold_genes) && any(bold_genes %in% rownames(grouped_expression_matrix))) {
     labels_expression <- lapply(rownames(grouped_expression_matrix), function(gene) {
@@ -1563,7 +1563,7 @@ heatmap_meta <- function(object,
   } else {
     labels_expression <- rownames(grouped_expression_matrix)
   }
-  
+
   # 9. Build pheatmap call arguments
   heatmap_args <- list(
     mat          = grouped_expression_matrix,
@@ -1575,21 +1575,21 @@ heatmap_meta <- function(object,
     fontsize_row = row_fontsize,
     labels_row   = labels_expression
   )
-  
+
   # Add annotation arguments only when a data frame was provided
   if (!is.null(gene_annotation)) {
     heatmap_args$annotation_row    <- gene_annotation
     heatmap_args$gaps_row          <- gaps_row
     heatmap_args$annotation_colors <- annotation_colors
   }
-  
+
   # Merge any extra user-supplied arguments
   extra_args <- list(...)
   heatmap_args <- c(heatmap_args, extra_args)
-  
+
   # 10. Draw heatmap
   p <- do.call(pheatmap::pheatmap, heatmap_args)
-  
+
   # 11. Optionally save to PNG
   if (!is.null(file_name)) {
     width  <- length(unique(groups))  * 0.5 + 5
@@ -1602,7 +1602,7 @@ heatmap_meta <- function(object,
     print(p)
     dev.off()
   }
-  
+
   return(p)
 }
 
@@ -1719,24 +1719,24 @@ venn_plots <- function(object,
                               quantity_cex = 1.0,
                               file_name = "eulerr_plot",
                               ...) {
-  
+
   # Input validation
   if (!is.list(comparisons) || is.null(names(comparisons))) {
     stop("comparisons must be a named list")
   }
-  
+
   if (length(comparisons) < 3 || length(comparisons) > 6) {
     stop("Number of comparisons must be between 3 and 6")
   }
-  
+
   if (!idents %in% colnames(object@meta.data)) {
     stop("Group column '", idents, "' not found in metadata")
   }
-  
+
   if (!direction %in% c("up", "down", "both")) {
     stop("Direction must be 'up', 'down', or 'both'")
   }
-  
+
   # Validate each comparison
   for (comp_name in names(comparisons)) {
     comp <- comparisons[[comp_name]]
@@ -1744,20 +1744,20 @@ venn_plots <- function(object,
       stop("Each comparison must contain exactly 2 groups. Check: ", comp_name)
     }
   }
-  
+
   # Set active identity
   Idents(object) <- object[[idents]] %>% unlist() %>% as.character()
-  
+
   # Perform differential expression for each comparison
   markers_list <- list()
   genes_list <- list()
-  
+
   message("Performing differential expression comparisons...")
   for (comp_name in names(comparisons)) {
     comp <- comparisons[[comp_name]]
-    
+
     message("  ", comp_name, ": ", comp[1], " vs ", comp[2])
-    
+
     markers <- FindMarkers(
       object,
       ident.1 = comp[1],
@@ -1765,10 +1765,10 @@ venn_plots <- function(object,
       logfc.threshold = 0,
       min.pct = min_pct
     )
-    
+
     markers$gene <- rownames(markers)
     markers_list[[comp_name]] <- markers
-    
+
     # Filter genes based on direction
     if (direction == "up") {
       filtered_genes <- rownames(
@@ -1783,11 +1783,11 @@ venn_plots <- function(object,
         markers %>% dplyr::filter(p_val_adj <= p_adj_cutoff, abs(avg_log2FC) >= log2fc_threshold)
       )
     }
-    
+
     genes_list[[comp_name]] <- filtered_genes
     message("    Found ", length(filtered_genes), " genes")
   }
-  
+
   # Default colors if not provided
   if (is.null(fills)) {
     n_comp <- length(comparisons)
@@ -1799,10 +1799,10 @@ venn_plots <- function(object,
       fills <- rainbow(n_comp)
     }
   }
-  
+
   # Compute Euler fit
   fit <- eulerr::euler(genes_list, ...)
-  
+
   # Generate main title if not provided
   if (is.null(main)) {
     direction_text <- switch(direction,
@@ -1811,16 +1811,16 @@ venn_plots <- function(object,
                              "both" = "Differentially Expressed")
     main <- paste(direction_text, "Genes")
   }
-  
+
   # Generate subtitle if not provided
   if (is.null(subtitle)) {
     subtitle <- paste0(
-      "min.pct = ", min_pct, 
+      "min.pct = ", min_pct,
       "  |log2FC| >= ", log2fc_threshold,
       "  p.adj <= ", p_adj_cutoff
     )
   }
-  
+
   # Create plot
   png(file_name, width = 2000, height = 1600, res = 300)
   print(plot(
@@ -1839,7 +1839,7 @@ venn_plots <- function(object,
     gp = gpar(cex = 0.8)
   )
   dev.off()
-  
+
   # Return results invisibly
   invisible(list(
     markers = markers_list,
@@ -1875,15 +1875,15 @@ cnmf_bar_plots <- function(
     show_metrics = FALSE,
     highlight_genes = NULL
 ) {
-  
+
   # --- Setup and Data Loading (Unchanged) ---
-  
+
   if (!dir.exists(dir_path))
     stop("dir_path does not exist.")
-  
+
   if (!dir.exists(output_dir))
     dir.create(output_dir, recursive = TRUE)
-  
+
   file_name <- list.files(
     dir_path,
     pattern = "cnmf_run\\.gene_spectra_tpm.*\\.dt_0_20\\.txt$",
@@ -1891,25 +1891,25 @@ cnmf_bar_plots <- function(
   )
   if (length(file_name) == 0)
     stop("No CNMF spectrum files found.")
-  
+
   file_name <- file_name[1]
   gene_by_pro <- read.table(file_name, fill = TRUE, header = TRUE, row.names = 1)
-  
+
   # --- Extract top-N genes (table output) ---
-  
+
   # The top_df will store the raw gene names
   top_matrix <- matrix(nrow = nrow(gene_by_pro), ncol = top_n)
   rownames(top_matrix) <- rownames(gene_by_pro)
-  
+
   for (i in seq_len(nrow(gene_by_pro))) {
     row_data <- as.numeric(gene_by_pro[i, ])
     top_idx <- order(row_data, decreasing = TRUE)[1:top_n]
     top_matrix[i, ] <- colnames(gene_by_pro)[top_idx]
   }
-  
+
   top_df <- as.data.frame(t(top_matrix))
   colnames(top_df) <- paste0("Usage_", colnames(top_df))
-  
+
   # --- Prepare output data frame for highlighting ---
   if (!is.null(highlight_genes)) {
     # Function to apply highlighting format (Markdown/HTML)
@@ -1922,30 +1922,30 @@ cnmf_bar_plots <- function(
       }
     }
   }
-  
+
   # --- Normalize data and extract metrics ---
   gene_by_pro <- t(apply(gene_by_pro, 1, function(x) (x - min(x)) / (max(x) - min(x))))
-  
+
   norm_data <- SeuratObject::GetAssayData(object, layer = "data") |> as.matrix()
   norm_data <- norm_data[colnames(gene_by_pro), ]
-  
+
   gene_medians <- matrixStats::rowMedians(norm_data)
   gene_maxs    <- matrixStats::rowMaxs(norm_data)
-  
+
   norm_data[norm_data == 0] <- NA
   gene_mins <- matrixStats::rowMins(norm_data, na.rm = TRUE)
-  
+
   # Dynamic plot size (Unchanged)
   width_px  <- 1000
   height_px <- 1000 + ((top_n - 30) * 20)
-  
+
   # --- Helper Plot Function (Modified) ---
   plot_top_columns <- function(row_data, row_name, gene_mins, gene_medians, gene_maxs, highlight_genes) {
-    
+
     top_idx    <- order(row_data, decreasing = TRUE)[1:top_n] |> rev()
     top_vals   <- row_data[top_idx] |> rev()
     top_genes  <- names(top_vals)
-    
+
     # Apply highlighting format for PLOT LABELS
     formatted_genes <- sapply(top_genes, function(gene) {
       if (!is.null(highlight_genes) && gene %in% highlight_genes) {
@@ -1955,10 +1955,10 @@ cnmf_bar_plots <- function(
         return(gene)
       }
     })
-    
+
     # Create factors from formatted genes
     formatted_genes_factor <- factor(formatted_genes, levels = rev(formatted_genes))
-    
+
     if (show_metrics) {
       plot_data <- data.frame(
         Column     = formatted_genes_factor,
@@ -1973,7 +1973,7 @@ cnmf_bar_plots <- function(
         Value  = top_vals
       )
     }
-    
+
     p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = Column, y = Value, fill = Value)) +
       ggplot2::geom_bar(stat = "identity") +
       ggplot2::labs(
@@ -1989,7 +1989,7 @@ cnmf_bar_plots <- function(
         axis.text.y = ggtext::element_markdown(),
         axis.text.x = ggplot2::element_text(angle = 90, hjust = 1)
       )
-    
+
     if (show_metrics) {
       p <- p +
         ggplot2::geom_text(
@@ -1998,13 +1998,13 @@ cnmf_bar_plots <- function(
           size = 2
         )
     }
-    
+
     outfile <- file.path(output_dir, paste0("Usage_", row_name, ".png"))
     grDevices::png(outfile, width = width_px, height = height_px, res = 200)
     print(p)
     grDevices::dev.off()
   }
-  
+
   # --- Loop and plot ---
   for (i in seq_len(nrow(gene_by_pro))) {
     row_name <- rownames(gene_by_pro)[i]
@@ -2012,12 +2012,12 @@ cnmf_bar_plots <- function(
     # Pass the highlight_genes argument to the helper function
     plot_top_columns(row_data, row_name, gene_mins, gene_medians, gene_maxs, highlight_genes)
   }
-  
+
   message("Finished generating plots in: ", output_dir)
-  
+
   return(list(
     # Return the data frame with HTML/Markdown formatting
-    top_df = top_df, 
+    top_df = top_df,
     file_used = file_name
   ))
 }
@@ -2042,14 +2042,14 @@ cnmf_umaps <- function(
     output_dir,
     pt_size = 0.5
 ) {
-  
+
   # Validate Inputs
   if (!dir.exists(dir_path))
     stop("dir_path does not exist.")
-  
+
   if (!dir.exists(output_dir))
     dir.create(output_dir, recursive = TRUE)
-  
+
   # Locate Usage Matrix
   file_name <- list.files(
     dir_path,
@@ -2058,49 +2058,49 @@ cnmf_umaps <- function(
   )
   if (length(file_name) == 0)
     stop("No cNMF usage consensus file found in dir_path.")
-  
+
   file_name <- file_name[1]
-  
+
   # Read + Normalize Usage Matrix
   cell_by_pro <- read.table(file_name, fill = TRUE, header = TRUE, row.names = 1)
-  
+
   # Normalize per-cell (row sums = 1)
   cell_by_pro <- t(apply(cell_by_pro, 1, function(x) x / sum(x)))
   cell_by_pro <- as.data.frame(cell_by_pro)
-  
+
   # Clean column names
   colnames(cell_by_pro) <- gsub("^X", "Usage", colnames(cell_by_pro))
   cell_by_pro$cell_id <- rownames(cell_by_pro)
-  
+
   # Add Usage to Seurat Metadata
   meta <- object@meta.data
   meta$cell_id <- rownames(meta)
-  
+
   meta <- dplyr::inner_join(meta, cell_by_pro, by = "cell_id")
   rownames(meta) <- meta$cell_id
-  
+
   object@meta.data <- meta
-  
+
   # Identify Usage Features
   usage_features <- grep("^Usage", colnames(object@meta.data), value = TRUE)
-  
+
   # Generate UMAP Plots
   for (usage in usage_features) {
     outfile <- file.path(output_dir, paste0("umap_", usage, ".png"))
     grDevices::png(outfile, width = 1000, height = 1000, res = 200)
-    
+
     FeaturePlot_scCustom(
       object,
       features = usage,
       pt.size = pt_size,
       order = TRUE
     ) |> print()
-    
+
     grDevices::dev.off()
   }
-  
+
   message("UMAP usage plots saved to: ", output_dir)
-  
+
   return(object)
 }
 
@@ -2112,71 +2112,71 @@ cnmf_umaps <- function(
 #' @return A data frame with genes as rows and programs as columns, showing ranks
 #' @export
 cnmf_gene_ranks <- function(dir_path, features) {
-  
+
   # --- Validate inputs ---
   if (!dir.exists(dir_path)) {
     stop("dir_path does not exist.")
   }
-  
+
   if (!is.character(features) || length(features) == 0) {
     stop("genes must be a non-empty character vector.")
   }
-  
+
   # --- Load cNMF gene spectra file ---
   file_name <- list.files(
     dir_path,
     pattern = "cnmf_run\\.gene_spectra_tpm.*\\.dt_0_20\\.txt$",
     full.names = TRUE
   )
-  
+
   if (length(file_name) == 0) {
     stop("No CNMF spectrum files found.")
   }
-  
+
   file_name <- file_name[1]
   gene_by_pro <- read.table(file_name, fill = TRUE, header = TRUE, row.names = 1)
-  
+
   # --- Check which genes are present ---
   genes_present <- features[features %in% colnames(gene_by_pro)]
   genes_missing <- features[!features %in% colnames(gene_by_pro)]
-  
+
   if (length(genes_missing) > 0) {
-    warning("The following genes were not found in cNMF results: ", 
+    warning("The following genes were not found in cNMF results: ",
             paste(genes_missing, collapse = ", "))
   }
-  
+
   if (length(genes_present) == 0) {
     stop("None of the specified genes were found in the cNMF results.")
   }
-  
+
   # --- Calculate ranks for each program ---
   rank_matrix <- matrix(
     nrow = length(genes_present),
     ncol = nrow(gene_by_pro),
     dimnames = list(genes_present, rownames(gene_by_pro))
   )
-  
+
   for (i in seq_len(nrow(gene_by_pro))) {
     program_name <- rownames(gene_by_pro)[i]
     row_data <- as.numeric(gene_by_pro[i, ])
     names(row_data) <- colnames(gene_by_pro)
-    
+
     # Rank genes (1 = highest weight)
     ranks <- rank(-row_data, ties.method = "min")
-    
+
     # Extract ranks for genes of interest
     rank_matrix[, program_name] <- ranks[genes_present]
   }
-  
+
   # --- Format output ---
   result <- as.data.frame(rank_matrix)
   colnames(result) <- paste0("Usage_", colnames(result))
-  
+
   cat("Total genes in analysis:", ncol(gene_by_pro), "\n")
   cat("Total programs in analysis:", nrow(gene_by_pro), "\n")
   cat("======================\n")
   print(result)
-  
+
   return(result)
 }
 
@@ -2218,31 +2218,31 @@ cnmf_top_programs <- function(obj,
   if (length(existing) > 0) {
     obj@meta.data <- obj@meta.data[, !colnames(obj@meta.data) %in% existing, drop = FALSE]
   }
-  
+
   # --- Locate usage file ---
   file_name <- list.files(
     dir_path,
     pattern = "cnmf_run\\.usages.*consensus\\.txt$",
     full.names = TRUE
   )
-  
+
   if (length(file_name) == 0) {
     stop("No cNMF usage file found in dir_path.")
   }
-  
+
   # Use first match
   file_name <- file_name[1]
-  
+
   # --- Load and normalize ---
   cell_by_pro <- read.table(file_name, fill = TRUE, header = TRUE, row.names = 1)
-  
+
   # Row-normalize each cell's usages
   cell_by_pro <- t(apply(cell_by_pro, 1, function(x) x / sum(x)))
   cell_by_pro <- as.data.frame(cell_by_pro)
-  
+
   colnames(cell_by_pro) <- gsub("^X", "Usage", colnames(cell_by_pro))
   cell_by_pro$cell_id <- rownames(cell_by_pro)
-  
+
   # --- Reshape + apply cutoff ---
   df <- cell_by_pro %>%
     tidyr::pivot_longer(
@@ -2261,19 +2261,19 @@ cnmf_top_programs <- function(obj,
       Quaternary = usage[4],
       .groups = "drop"
     )
-  
+
   # --- Merge with metadata ---
   meta <- obj@meta.data
   meta <- dplyr::left_join(meta, df, by = "cell_id")
   rownames(meta) <- meta$cell_id
   obj@meta.data <- meta
-  
+
   # --- Factor ordering ---
   obj$Primary    <- factor(obj$Primary,    levels = stringr::str_sort(unique(obj$Primary),    numeric = TRUE))
   obj$Secondary  <- factor(obj$Secondary,  levels = stringr::str_sort(unique(obj$Secondary),  numeric = TRUE))
   obj$Tietiary   <- factor(obj$Tietiary,   levels = stringr::str_sort(unique(obj$Tietiary),   numeric = TRUE))
   obj$Quaternary <- factor(obj$Quaternary, levels = stringr::str_sort(unique(obj$Quaternary), numeric = TRUE))
-  
+
   cell_by_pro$cell_id <- NULL
   return(list(object = obj, cell_by_pro = cell_by_pro))
 }
@@ -2306,7 +2306,7 @@ compare_cnmf_programs <- function(
     heatmap_title = "Usage Similarity",
     vf_only = TRUE
 ) {
-  
+
   # --- Internal helper: find the CNMF spectra file ---
   find_cnmf_file <- function(dir_path) {
     file <- list.files(
@@ -2316,22 +2316,22 @@ compare_cnmf_programs <- function(
     )
     if (length(file) == 0)
       stop(paste("No CNMF gene_spectra_tpm file found in:", dir_path))
-    
+
     return(file[1])
   }
-  
+
   # --- Internal helper: get top-N genes per program ---
   get_top_genes <- function(cnmf_matrix, top_n) {
     top_matrix <- matrix(nrow = nrow(cnmf_matrix), ncol = top_n)
     rownames(top_matrix) <- rownames(cnmf_matrix)
-    
+
     for (i in 1:nrow(cnmf_matrix)) {
       row_data <- as.numeric(cnmf_matrix[i, ])
       top_idx <- order(row_data, decreasing = TRUE)[1:top_n]
       top_genes <- colnames(cnmf_matrix)[top_idx]
       top_matrix[i, ] <- top_genes
     }
-    
+
     df <- as.data.frame(t(top_matrix))
     colnames(df) <- paste0("Usage_", colnames(df))
     return(df)
@@ -2347,19 +2347,19 @@ compare_cnmf_programs <- function(
 
   if (vf_only) {
     vfs <- VariableFeatures(object)
-    
+
     top_df1 <- top_df1 %>%
       dplyr::mutate(across(everything(), ~ ifelse(.x %in% vfs, .x, NA)))
-    
+
     top_df2 <- top_df2 %>%
       dplyr::mutate(across(everything(), ~ ifelse(.x %in% vfs, .x, NA)))
   }
 
   k1 <- ncol(top_df1)
   k2 <- ncol(top_df2)
-  
+
   overlap_matrix <- matrix(0, nrow = k1, ncol = k2)
-  
+
   for (i in 1:k1) {
     genes1 <- as.character(unlist(top_df1[, i]))
     for (j in 1:k2) {
@@ -2367,7 +2367,7 @@ compare_cnmf_programs <- function(
       overlap_matrix[i, j] <- length(intersect(genes1, genes2))
     }
   }
-  
+
   rownames(overlap_matrix) <- paste0(label1, "_", 1:k1)
   colnames(overlap_matrix) <- paste0(label2, "_", 1:k2)
 
@@ -2380,7 +2380,7 @@ compare_cnmf_programs <- function(
     angle_col = 45,
     main = heatmap_title
   )
-  
+
   print(p)
 
   return(list(
@@ -2427,16 +2427,16 @@ boxplot_paired_points <- function(
   if (!gene %in% rownames(object)) {
     stop(paste0("Gene '", gene, "' not found in Seurat object."))
   }
-  
+
   # 2. Extract Data
   expr_matrix <- Seurat::GetAssayData(object, layer = "data")
   gene_expr <- expr_matrix[gene, ]
-  
+
   metadata <- object@meta.data
   metadata$Expression <- gene_expr
   metadata$Patient <- metadata[[participant_col]]
   metadata$Timepoint <- metadata[[timepoint_col]]
-  
+
   # # 3. Filter and Aggregate Data per Patient
   # plot_data <- metadata %>%
   #   dplyr::filter(.data$Timepoint %in% c(pre_label, post_label)) %>%
@@ -2447,7 +2447,7 @@ boxplot_paired_points <- function(
   #     .groups = 'drop'
   #   ) %>%
   #   dplyr::ungroup()
-  
+
   # 3. Filter and Aggregate Data per Patient
   plot_data <- metadata %>%
     dplyr::filter(.data$Timepoint %in% c(pre_label, post_label)) %>%
@@ -2459,33 +2459,33 @@ boxplot_paired_points <- function(
       .groups  = 'drop'
     ) %>%
     dplyr::ungroup()
-  
+
   plot_data$Timepoint <- factor(plot_data$Timepoint, levels = c(pre_label, post_label))
-  
+
   # 4. Identify Paired Patients
   paired_data <- plot_data %>%
     dplyr::group_by(.data$Patient) %>%
     dplyr::filter(dplyr::n() == 2) %>%
     dplyr::ungroup()
-  
+
   # 5. Compute statistics per facet group if requested
   if (add_stats) {
     facet_groups <- if (!is.null(facet_col)) unique(paired_data[[facet_col]]) else "all"
-    
+
     stat_results <- lapply(facet_groups, function(grp) {
       if (!is.null(facet_col)) {
         grp_data <- paired_data %>% dplyr::filter(.data[[facet_col]] == grp)
       } else {
         grp_data <- paired_data
       }
-      
+
       pre_vals  <- grp_data$Value[grp_data$Timepoint == pre_label]
       post_vals <- grp_data$Value[grp_data$Timepoint == post_label]
-      
+
       # Match by patient to ensure proper pairing
       pre_vals  <- grp_data %>% dplyr::filter(.data$Timepoint == pre_label)  %>% dplyr::arrange(.data$Patient) %>% dplyr::pull(.data$Value)
       post_vals <- grp_data %>% dplyr::filter(.data$Timepoint == post_label) %>% dplyr::arrange(.data$Patient) %>% dplyr::pull(.data$Value)
-      
+
       if (length(pre_vals) < 3 || length(post_vals) < 3) {
         p_val <- NA
         message("Skipping stats for group '", grp, "': fewer than 3 paired observations.")
@@ -2493,16 +2493,16 @@ boxplot_paired_points <- function(
         test_fn <- match.fun(test_method)
         p_val   <- test_fn(pre_vals, post_vals, paired = TRUE)$p.value
       }
-      
+
       # Format p value label
       p_label <- if (is.na(p_val)) "p = NA" else sprintf("p = %.4f", p_val)
-      
+
       # Y position for label
       y_max <- max(grp_data$Value, na.rm = TRUE)
       y_range <- diff(range(grp_data$Value, na.rm = TRUE))
       y_bracket <- y_max + y_range * 0.05   # bracket sits 5% of range above max
       y_label   <- y_bracket + 0.1  # label sits fixed gap above bracket
-      
+
       data.frame(
         facet     = grp,
         p_label   = p_label,
@@ -2511,14 +2511,14 @@ boxplot_paired_points <- function(
         stringsAsFactors = FALSE
       )
     })
-    
+
     stat_df <- do.call(rbind, stat_results)
     if (!is.null(facet_col)) colnames(stat_df)[1] <- facet_col
-    
+
     # X position: midpoint between the two timepoints (1.5 on a 2-level factor)
     stat_df$x_pos <- 1.5
   }
-  
+
   # 6. Create the Plot
   p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = .data$Timepoint, y = .data$Value)) +
     ggplot2::geom_boxplot(width = 0.5, outlier.shape = NA, alpha = 0.6) +
@@ -2547,12 +2547,12 @@ boxplot_paired_points <- function(
     ) +
     ggplot2::theme_minimal() +
     ggplot2::theme(legend.position = "none")
-  
+
   # 7. Add faceting
   if (!is.null(facet_col)) {
     p <- p + ggplot2::facet_wrap(stats::as.formula(paste("~", facet_col)))
   }
-  
+
   # 8. Add stat labels + bracket
   if (add_stats) {
     p <- p +
@@ -2570,7 +2570,7 @@ boxplot_paired_points <- function(
         linewidth = 0.4
       )
   }
-  
+
   return(list(plot = p, data = plot_data))
 }
 
@@ -2612,18 +2612,18 @@ scatter_plot <- function(object,
       stop("'", var, "' not found in meta.data or gene features.")
     }
   }
-  
+
   # Validate color_by
   if (!color_by %in% colnames(object@meta.data)) {
     stop("'", color_by, "' not found in meta.data.")
   }
-  
+
   df <- data.frame(
     x     = fetch_var(object, x_var),
     y     = fetch_var(object, y_var),
     group = factor(object@meta.data[[color_by]])
   )
-  
+
   # Downsample each group to the size of the smallest group
   if (downsample) {
     min_n <- min(table(df$group))
@@ -2631,9 +2631,9 @@ scatter_plot <- function(object,
       g[sample(nrow(g), min_n), ]
     }))
   }
-  
+
   plot_title <- if (!is.null(title)) title else paste(x_var, "vs.", y_var)
-  
+
   p <- ggplot2::ggplot(df, ggplot2::aes(x = x, y = y, color = group)) +
     ggplot2::geom_point(size = point_size, alpha = alpha) +
     ggplot2::labs(
@@ -2647,11 +2647,11 @@ scatter_plot <- function(object,
       plot.title   = ggplot2::element_text(hjust = 0.5, face = "bold"),
       legend.title = ggplot2::element_text(face = "bold")
     )
-  
+
   if (!is.null(colors)) {
     p <- p + ggplot2::scale_color_manual(values = colors)
   }
-  
+
   return(p)
 }
 
@@ -2696,18 +2696,18 @@ scatter_plot <- function(object,
       stop("'", var, "' not found in meta.data or gene features.")
     }
   }
-  
+
   # Validate color_by
   if (!color_by %in% colnames(object@meta.data)) {
     stop("'", color_by, "' not found in meta.data.")
   }
-  
+
   df <- data.frame(
     x     = fetch_var(object, x_var),
     y     = fetch_var(object, y_var),
     group = factor(object@meta.data[[color_by]])
   )
-  
+
   # Downsample each group to the size of the smallest group
   if (downsample) {
     min_n <- min(table(df$group))
@@ -2715,14 +2715,14 @@ scatter_plot <- function(object,
       g[sample(nrow(g), min_n), ]
     }))
   }
-  
+
   # Shuffle row order to avoid group layering
   if (shuffle) {
     df <- df[sample(nrow(df)), ]
   }
-  
+
   plot_title <- if (!is.null(title)) title else paste(x_var, "vs.", y_var)
-  
+
   p <- ggplot2::ggplot(df, ggplot2::aes(x = x, y = y, color = group)) +
     ggplot2::geom_point(size = point_size, alpha = alpha) +
     ggplot2::labs(
@@ -2736,40 +2736,62 @@ scatter_plot <- function(object,
       plot.title   = ggplot2::element_text(hjust = 0.5, face = "bold"),
       legend.title = ggplot2::element_text(face = "bold")
     )
-  
+
   if (!is.null(colors)) {
     p <- p + ggplot2::scale_color_manual(values = colors)
   }
-  
+
   return(p)
 }
 
-#' Plot Gene Expression Boxplots with Jitter by Cell Type Groups
+#' Boxplot with jittered points for Seurat features
 #'
-#' Generates boxplots with overlaid jitter points of gene expression for
-#' selected groups (cell types) from a Seurat object. Multiple features are
-#' shown as faceted panels in a single plot.
+#' Generates a faceted boxplot with overlaid jitter points for one or more
+#' features across identity groups in a Seurat object. Features can be genes
+#' or metadata columns.
 #'
-#' @param object A Seurat object containing expression data and metadata.
-#' @param features Character vector of gene names to plot.
-#' @param idents Character string specifying the metadata column to use for
-#'   setting cell identities (e.g., "cell_type", "seurat_clusters").
-#' @param groups Character vector specifying which categories within \code{idents}
-#'   to include. If \code{NULL}, all groups are used.
-#' @param colors Character vector of colors, assigned to groups in order.
-#'   If \code{NULL}, a default color palette is used.
-#' @param x_label_angle Numeric. Rotation angle for x-axis labels. Default is 0
-#'   (horizontal). Use 45 for diagonal or 90 for vertical.
-#' @param jitter_size Numeric. Size of jitter points. Default is 0.5.
-#' @param jitter_alpha Numeric. Transparency of jitter points (0-1). Default is 0.4.
-#' @param boxplot_alpha Numeric. Transparency of boxplot fill (0-1). Default is 0.6.
-#' @param outlier_shape Numeric. Shape for outlier points in boxplot. Default is
-#'   \code{NA} (hidden, since jitter already shows all points).
-#' @param facet_scales Character. Scales for facet panels, passed to
-#'   \code{facet_wrap}. One of \code{"fixed"}, \code{"free"}, \code{"free_x"},
-#'   or \code{"free_y"}. Default is \code{"free_y"}.
+#' @param object A \code{Seurat} object.
+#' @param features Character vector of features to plot (gene names or metadata
+#'   columns).
+#' @param idents Character string specifying the metadata column to use as
+#'   grouping identity.
+#' @param groups Character vector of group levels to include. If \code{NULL},
+#'   all groups are included. Default is \code{NULL}.
+#' @param colors Character vector of colors for each group. If \code{NULL},
+#'   colors are assigned automatically using \code{scales::hue_pal()}.
+#'   Default is \code{NULL}.
+#' @param x_label_angle Numeric. Rotation angle for x-axis labels in degrees.
+#'   Default is \code{0}.
+#' @param jitter_size Numeric. Size of jitter points. Default is \code{0.5}.
+#' @param jitter_alpha Numeric. Transparency of jitter points (0-1). Default
+#'   is \code{0.4}.
+#' @param boxplot_alpha Numeric. Transparency of boxplot fill (0-1). Default
+#'   is \code{0.6}.
+#' @param outlier_shape Numeric or \code{NA}. Shape for outlier points. Set to
+#'   \code{NA} to suppress outliers (recommended when jitter is shown). Default
+#'   is \code{NA}.
+#' @param facet_scales Character string passed to \code{ggplot2::facet_wrap()}
+#'   \code{scales} argument. One of \code{"free_y"}, \code{"free"},
+#'   \code{"fixed"}, or \code{"free_x"}. Default is \code{"free_y"}.
 #'
-#' @return A ggplot object.
+#' @return A \code{ggplot} object.
+#'
+#' @examples
+#' \dontrun{
+#' boxplot_jitter(
+#'   object        = seurat_obj,
+#'   features      = c("CD8A", "PDCD1"),
+#'   idents        = "seurat_clusters",
+#'   groups        = c("0", "1", "2"),
+#'   x_label_angle = 45
+#' )
+#' }
+#'
+#' @importFrom Seurat Idents FetchData
+#' @importFrom ggplot2 ggplot aes geom_jitter geom_boxplot scale_fill_manual
+#'   scale_color_manual facet_wrap labs theme_minimal theme element_text
+#' @importFrom tidyr pivot_longer
+#' @importFrom scales hue_pal
 #' @export
 boxplot_jitter <- function(
     object,
@@ -2783,18 +2805,12 @@ boxplot_jitter <- function(
     boxplot_alpha = 0.6,
     outlier_shape = NA,
     facet_scales  = "free_y") {
-  
+
   # 1. Input Validation
-  missing_genes <- features[!features %in% rownames(object)]
-  if (length(missing_genes) > 0) {
-    features <- intersect(features, rownames(object))
-    print(paste0("The following features were not found in the Seurat object: ",
-                 paste(missing_genes, collapse = ", ")))
-  }
   if (!idents %in% colnames(object@meta.data)) {
     stop(paste0("Column '", idents, "' not found in object metadata."))
   }
-  
+
   # 2. Set Idents and filter groups
   Seurat::Idents(object) <- idents
   if (!is.null(groups)) {
@@ -2805,12 +2821,20 @@ boxplot_jitter <- function(
     }
     object <- subset(object, idents = groups)
   }
-  
-  # 3. Extract normalized expression for all features
-  expr_matrix <- Seurat::GetAssayData(object, layer = "data")
-  expr_df <- as.data.frame(t(as.matrix(expr_matrix[features, , drop = FALSE])))
-  expr_df$Group <- object@meta.data[[idents]]
-  
+
+  # 3. FetchData handles genes and metadata seamlessly
+  expr_df <- Seurat::FetchData(object, vars = c(features, idents))
+
+  # warn about any features that came back all NA
+  missing_features <- features[!features %in% colnames(expr_df)]
+  if (length(missing_features) > 0) {
+    warning(paste0("The following features were not found: ",
+                   paste(missing_features, collapse = ", ")))
+    features <- features[features %in% colnames(expr_df)]
+  }
+
+  names(expr_df)[names(expr_df) == idents] <- "Group"
+
   # 4. Reshape to long format
   plot_data <- tidyr::pivot_longer(
     expr_df,
@@ -2819,19 +2843,18 @@ boxplot_jitter <- function(
     values_to = "Expression"
   )
   plot_data$Feature <- factor(plot_data$Feature, levels = features)
-  
-  # Respect group order if provided
+
   if (!is.null(groups)) {
     plot_data$Group <- factor(plot_data$Group, levels = groups)
   }
-  
+
   # 5. Set colors
   all_groups <- levels(factor(plot_data$Group))
   if (is.null(colors)) {
     colors <- scales::hue_pal()(length(all_groups))
   }
   colors <- setNames(colors[seq_along(all_groups)], all_groups)
-  
+
   # 6. Build Plot
   p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = .data$Group, y = .data$Expression,
                                                fill = .data$Group, color = .data$Group)) +
@@ -2850,10 +2873,7 @@ boxplot_jitter <- function(
     ggplot2::scale_fill_manual(values  = colors) +
     ggplot2::scale_color_manual(values = colors) +
     ggplot2::facet_wrap(~ Feature, scales = facet_scales) +
-    ggplot2::labs(
-      x = idents,
-      y = "Normalized Expression"
-    ) +
+    ggplot2::labs(x = idents, y = "Gene Expression") +
     ggplot2::theme_minimal() +
     ggplot2::theme(
       legend.position = "none",
@@ -2863,6 +2883,6 @@ boxplot_jitter <- function(
       ),
       strip.text      = ggplot2::element_text(face = "bold")
     )
-  
+
   return(p)
 }

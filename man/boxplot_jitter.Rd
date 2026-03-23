@@ -2,7 +2,7 @@
 % Please edit documentation in R/customized_vis.R
 \name{boxplot_jitter}
 \alias{boxplot_jitter}
-\title{Plot Gene Expression Boxplots with Jitter by Cell Type Groups}
+\title{Boxplot with jittered points for Seurat features}
 \usage{
 boxplot_jitter(
   object,
@@ -19,40 +19,57 @@ boxplot_jitter(
 )
 }
 \arguments{
-\item{object}{A Seurat object containing expression data and metadata.}
+\item{object}{A \code{Seurat} object.}
 
-\item{features}{Character vector of gene names to plot.}
+\item{features}{Character vector of features to plot (gene names or metadata
+columns).}
 
-\item{idents}{Character string specifying the metadata column to use for
-setting cell identities (e.g., "cell_type", "seurat_clusters").}
+\item{idents}{Character string specifying the metadata column to use as
+grouping identity.}
 
-\item{groups}{Character vector specifying which categories within \code{idents}
-to include. If \code{NULL}, all groups are used.}
+\item{groups}{Character vector of group levels to include. If \code{NULL},
+all groups are included. Default is \code{NULL}.}
 
-\item{colors}{Character vector of colors, assigned to groups in order.
-If \code{NULL}, a default color palette is used.}
+\item{colors}{Character vector of colors for each group. If \code{NULL},
+colors are assigned automatically using \code{scales::hue_pal()}.
+Default is \code{NULL}.}
 
-\item{x_label_angle}{Numeric. Rotation angle for x-axis labels. Default is 0
-(horizontal). Use 45 for diagonal or 90 for vertical.}
+\item{x_label_angle}{Numeric. Rotation angle for x-axis labels in degrees.
+Default is \code{0}.}
 
-\item{jitter_size}{Numeric. Size of jitter points. Default is 0.5.}
+\item{jitter_size}{Numeric. Size of jitter points. Default is \code{0.5}.}
 
-\item{jitter_alpha}{Numeric. Transparency of jitter points (0-1). Default is 0.4.}
+\item{jitter_alpha}{Numeric. Transparency of jitter points (0-1). Default
+is \code{0.4}.}
 
-\item{boxplot_alpha}{Numeric. Transparency of boxplot fill (0-1). Default is 0.6.}
+\item{boxplot_alpha}{Numeric. Transparency of boxplot fill (0-1). Default
+is \code{0.6}.}
 
-\item{outlier_shape}{Numeric. Shape for outlier points in boxplot. Default is
-\code{NA} (hidden, since jitter already shows all points).}
+\item{outlier_shape}{Numeric or \code{NA}. Shape for outlier points. Set to
+\code{NA} to suppress outliers (recommended when jitter is shown). Default
+is \code{NA}.}
 
-\item{facet_scales}{Character. Scales for facet panels, passed to
-\code{facet_wrap}. One of \code{"fixed"}, \code{"free"}, \code{"free_x"},
-or \code{"free_y"}. Default is \code{"free_y"}.}
+\item{facet_scales}{Character string passed to \code{ggplot2::facet_wrap()}
+\code{scales} argument. One of \code{"free_y"}, \code{"free"},
+\code{"fixed"}, or \code{"free_x"}. Default is \code{"free_y"}.}
 }
 \value{
-A ggplot object.
+A \code{ggplot} object.
 }
 \description{
-Generates boxplots with overlaid jitter points of gene expression for
-selected groups (cell types) from a Seurat object. Multiple features are
-shown as faceted panels in a single plot.
+Generates a faceted boxplot with overlaid jitter points for one or more
+features across identity groups in a Seurat object. Features can be genes
+or metadata columns.
+}
+\examples{
+\dontrun{
+boxplot_jitter(
+  object        = seurat_obj,
+  features      = c("CD8A", "PDCD1"),
+  idents        = "seurat_clusters",
+  groups        = c("0", "1", "2"),
+  x_label_angle = 45
+)
+}
+
 }

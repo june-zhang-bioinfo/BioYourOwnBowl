@@ -23,24 +23,28 @@ Must include the following columns:
 }}
 
 \item{top_n}{Integer specifying the number of top marker genes to select per cluster,
-ranked by score. Default is 25.}
+ranked by score. If \code{NULL}, all genes passing filters are returned, ranked by score.
+Default is 25.}
 
-\item{direction}{Character string specifying whether to select upregulated
-(\code{"up"}) or downregulated (\code{"down"}) genes. Default is \code{"up"}.}
+\item{direction}{Character string specifying which genes to retain based on fold change
+direction. One of \code{"up"} (avg_log2FC > log2fc_cutoff), \code{"down"}
+(avg_log2FC < -log2fc_cutoff), or \code{"both"} (abs(avg_log2FC) > log2fc_cutoff).
+Default is \code{"up"}. Ignored when input contains exactly 2 unique clusters.}
 
-\item{adj_p_cutoff}{Numeric value specifying the statistical significance cutoff.}
+\item{adj_p_cutoff}{Numeric value specifying the adjusted p-value significance cutoff.
+Default is 0.05.}
 
 \item{log2fc_cutoff}{Numeric value specifying the minimum absolute log2 fold change
 threshold. Default is 0.}
 }
 \value{
-A tibble containing the selected genes with columns:
+A data frame containing the selected genes with columns:
 \describe{
 \item{gene}{Gene name.}
 \item{cluster}{Cluster identifier.}
 \item{p_val_adj}{Adjusted p-value.}
 \item{avg_log2FC}{Average log2 fold change.}
-\item{score}{Computed score for ranking.}
+\item{score}{Computed composite score used for ranking.}
 }
 }
 \description{
@@ -49,28 +53,37 @@ using a scoring system that combines statistical significance (\code{p_val_adj})
 effect size (\code{avg_log2FC}). It can take results from both \code{FindAllMarkers} (> 2 groups) and \code{FindMarkers} (2 groups).
 }
 \details{
-If using results from \code{FindMarkers}, \code{direction} doesn't take effect. Please make sure you add \code{cluster} column indicating the group name in the input.
+If using results from \code{FindMarkers}, \code{direction} doesn't take effect. Please make sure you add a \code{cluster} column indicating the group name in the input.
 
 The function computes a composite score for each gene as:
-\deqn{score = -log10(p\_val\_adj) * |avg\_log2FC|}
+\deqn{score = -\log_{10}(p\_val\_adj) \times |avg\_log2FC|}
 
-It then filters genes based on the specified direction (\code{avg_log2FC > log2fc_cutoff} for \code{"up"},
-\code{avg_log2FC < -log2fc_cutoff} for \code{"down"}), selects the top \code{n} genes by score per cluster. If \code{p_val_adj} is zero, it is replaced with
-the smallest positive representable value to avoid infinite scores.
+Genes are filtered by \code{adj_p_cutoff} and \code{log2fc_cutoff} according to
+the specified \code{direction}, then ranked by score within each cluster.
+If \code{p_val_adj} is zero, it is replaced with \code{.Machine$double.xmin}
+to avoid infinite scores.
+
+When the input contains exactly 2 unique clusters (i.e., \code{FindMarkers} output),
+\code{direction} is ignored and all genes passing \code{adj_p_cutoff} are retained.
 }
 \examples{
 \dontrun{
 markers <- FindAllMarkers(seurat_object)
-selected_genes <- c("CD3D", "MS4A1", "LYZ")
 
-# Select top 20 upregulated genes with log2FC > 0.5
+# Top 20 upregulated genes with log2FC > 0.5
 selected <- select_marker_genes_score(
   markers,
   top_n = 20,
   direction = "up",
   log2fc_cutoff = 0.5
 )
-head(selected)
+
+# All genes in both directions, ranked by score
+all_ranked <- select_marker_genes_score(
+  markers,
+  top_n = NULL,
+  direction = "both"
+)
 }
 
 }
