@@ -14,6 +14,7 @@ Imports:
     dplyr (>= 1.1.4),
     EnhancedVolcano,
     eulerr (>= 7.0.4),
+    ggnewscale (>= 0.5.1),
     ggplot2 (== 3.5.2),
     ggpubr (>= 0.6.0),
     ggrepel (>= 0.9.5),

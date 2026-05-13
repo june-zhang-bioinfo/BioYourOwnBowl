@@ -599,7 +599,7 @@ density_plot <- function(file_name, density_specs,
 {cmap_code}
 sc.tl.embedding_density(adata, basis='umap', groupby='{meta_col}')
 with plt.rc_context({{'figure.figsize': ({fig_width}, {fig_height})}}):
-    sc.pl.embedding_density(
+    fig = sc.pl.embedding_density(
         adata,
         basis='umap',
         groupby='{meta_col}',
@@ -608,8 +608,17 @@ with plt.rc_context({{'figure.figsize': ({fig_width}, {fig_height})}}):
         fg_dotsize=80,
         ncols={ncols},
         group={jsonlite::toJSON(groups, auto_unbox=TRUE)},
-        show=False
+        show=False,
+        return_fig=True
     )
+axes = fig.get_axes() if hasattr(fig, 'get_axes') else (fig if isinstance(fig, list) else [fig])
+
+for ax in axes:
+    if ax.get_label() != '<colorbar>':
+        ax.set_xlabel('scRNA-seq_UMAP1')
+        ax.set_ylabel('scRNA-seq_UMAP2')
+    else:
+        ax.set_ylabel('')
 plt.savefig('density_{meta_col}.png', bbox_inches='tight', dpi=300)
 plt.close('all')
 ")
@@ -644,7 +653,7 @@ plt.close('all')
 #' @param log2fc_cutoff Numeric value for log2 fold change threshold to highlight
 #'   significant genes. Default is 1.
 #' @param p_cutoff Numeric value for adjusted p-value cutoff to highlight significant
-#'   genes. Default is 0.01.
+#'   genes. Default is 0.05.
 #' @param file_name Optional character string for output file prefix. If provided,
 #'   plots will be saved as PNG files. If NULL, plots are displayed but not saved.
 #'   Default is NULL.
@@ -1482,6 +1491,8 @@ heatmap_meta <- function(object,
     idents <- "cohort_tp"
   }
 
+  feat_df <- feat_df[as.character(feat_df[[1]]) %in% rownames(obj),]
+
   # 2. Parse features — vector or data frame
   if (is.data.frame(features)) {
     feat_df      <- features
@@ -1513,7 +1524,7 @@ heatmap_meta <- function(object,
     )
 
   } else {
-    gene_vec        <- as.character(features)
+    gene_vec        <- as.character(features[features %in% rownames(object)])
     gene_annotation <- NULL
     gaps_row        <- NULL
   }
@@ -1523,14 +1534,11 @@ heatmap_meta <- function(object,
     object <- Seurat::NormalizeData(object)
   }
 
-  # 4. Intersect with available genes (preserving order)
-  gene_vec <- intersect(gene_vec, rownames(object))
-
-  # 5. Extract expression data
+  # 4. Extract expression data
   expression_matrix <- as.data.frame(Seurat::GetAssayData(object, layer = "data"))
   expression_matrix <- expression_matrix[gene_vec, ]
 
-  # 6. Add cell type annotations and summarize by group (mean)
+  # 5. Add cell type annotations and summarize by group (mean)
   cell_annotations <- object[[idents, drop = TRUE]]
 
   grouped_expression <- expression_matrix %>%
@@ -1544,13 +1552,13 @@ heatmap_meta <- function(object,
     dplyr::summarize(mean_expression = mean(expression), .groups = "drop") %>%
     tidyr::pivot_wider(names_from = cell_type, values_from = mean_expression)
 
-  # 7. Convert to matrix and order rows/columns
+  # 6. Convert to matrix and order rows/columns
   grouped_expression_matrix <- as.matrix(grouped_expression[, -1])
   rownames(grouped_expression_matrix) <- grouped_expression$gene
   grouped_expression_matrix <- grouped_expression_matrix[gene_vec, ]
   grouped_expression_matrix <- grouped_expression_matrix[, groups]
 
-  # 8. Build bold row labels if requested
+  # 7. Build bold row labels if requested
   if (!is.null(bold_genes) && any(bold_genes %in% rownames(grouped_expression_matrix))) {
     labels_expression <- lapply(rownames(grouped_expression_matrix), function(gene) {
       if (gene %in% bold_genes) {
@@ -1564,7 +1572,7 @@ heatmap_meta <- function(object,
     labels_expression <- rownames(grouped_expression_matrix)
   }
 
-  # 9. Build pheatmap call arguments
+  # 8. Build pheatmap call arguments
   heatmap_args <- list(
     mat          = grouped_expression_matrix,
     cluster_rows = cluster_rows,
@@ -1587,10 +1595,10 @@ heatmap_meta <- function(object,
   extra_args <- list(...)
   heatmap_args <- c(heatmap_args, extra_args)
 
-  # 10. Draw heatmap
+  # 9. Draw heatmap
   p <- do.call(pheatmap::pheatmap, heatmap_args)
 
-  # 11. Optionally save to PNG
+  # 10. Optionally save to PNG
   if (!is.null(file_name)) {
     width  <- length(unique(groups))  * 0.5 + 5
     height <- length(unique(gene_vec)) * 0.35 + 6
@@ -1605,6 +1613,315 @@ heatmap_meta <- function(object,
 
   return(p)
 }
+
+
+#' Generate Cell-Type-Level Expression Heatmap
+#'
+#' This function creates a heatmap showing gene expression averaged across cell types
+#' or groups. Expression values are aggregated by taking the mean across all cells
+#' within each group, then optionally row-scaled (z-score normalized) for visualization.
+#' It allows for customization of gene label appearance, optional row annotations,
+#' and highlighted genes rendered at full size with leader lines via anno_mark().
+#'
+#' @param object A Seurat object containing expression data and metadata
+#' @param features Either a character vector of gene names, or a data frame where
+#'   the first column contains gene names and the second column contains annotation
+#'   category labels (e.g., "Memory/naive-like", "Effector"). When a data frame is
+#'   provided, gene order is preserved and a row annotation bar is automatically
+#'   generated from the category column.
+#' @param groups Character vector specifying the order of cell type/group labels.
+#'   This defines both which groups to include and their display order.
+#' @param idents Character string specifying the metadata column containing
+#'   cell type or group information. If NULL, defaults to "cohort_tp".
+#' @param mark_genes Character vector of gene names to highlight with large legible
+#'   labels via anno_mark() leader lines. All other row labels are hidden.
+#'   Default is NULL (shows no row labels).
+#' @param mark_fontsize Numeric font size for the marked gene labels. Default is 10.
+#' @param mark_fontface Font face for marked gene labels: "plain", "bold", "italic",
+#'   or "bold.italic". Default is "bold".
+#' @param row_fontsize Numeric font size for row labels when showing all labels
+#'   (only used when mark_genes is NULL and show_all_labels is TRUE). Default is 10.
+#' @param show_all_labels Logical. If TRUE and mark_genes is NULL, shows all row
+#'   labels (only practical for small gene sets). Default is FALSE.
+#' @param normalize Logical indicating whether to normalize the data before plotting.
+#'   Default is TRUE.
+#' @param cluster_rows Logical indicating whether to cluster rows (genes).
+#'   Default is FALSE.
+#' @param cluster_cols Logical indicating whether to cluster columns (groups).
+#'   Default is FALSE.
+#' @param scale Character string indicating scaling method: "row" (default),
+#'   "column", or "none".
+#' @param title Optional character string for plot title. Default is NA (no title).
+#' @param col_names_angle Numeric angle for column label rotation. Default is 315.
+#' @param col_names_fontsize Numeric font size for column labels. Default is 10.
+#' @param annotation_colors Optional character vector of colors assigned to annotation
+#'   categories in order of their first appearance in the features data frame.
+#'   If NULL and a data frame is passed to features, colors are auto-generated.
+#' @param heatmap_colors Optional character vector of length >= 2 to build the
+#'   color ramp for expression values. Default is c("navy", "white", "firebrick3").
+#' @param file_name Name of PNG file to save. Default is NULL (no file saved).
+#' @param file_width Width of saved PNG in inches. Default is auto-computed.
+#' @param file_height Height of saved PNG in inches. Default is auto-computed.
+#' @param ... Additional arguments passed to ComplexHeatmap::Heatmap()
+#'
+#' @return A ComplexHeatmap object (drawn invisibly; also printed to the active device)
+#'
+#' @details
+#' The function performs the following steps:
+#' \enumerate{
+#'   \item Optionally normalizes the Seurat object
+#'   \item Extracts expression data for specified genes
+#'   \item Averages expression across all cells within each group
+#'   \item Orders groups according to the specified order
+#'   \item Optionally scales the matrix by row (z-score) or column
+#'   \item If features is a data frame, builds a row annotation sidebar with
+#'     category colors and gap lines at category boundaries
+#'   \item If mark_genes is provided, builds an anno_mark() right annotation
+#'     that draws leader lines to large, legible labels for those genes only
+#'   \item Draws the heatmap and optionally saves to PNG
+#' }
+#'
+#' @examples
+#' \dontrun{
+#' # Vector input, highlight a few genes
+#' heatmap_meta(
+#'   object     = obj,
+#'   features   = c("CD3D", "CD8A", "IFNG", "FOXP3", "TOX", "TCF7"),
+#'   groups     = c("CD4 T", "CD8 T", "NK"),
+#'   mark_genes = c("IFNG", "TOX")
+#' )
+#'
+#' # Data frame input (with annotation bar) and highlighted genes
+#' feat_df <- data.frame(
+#'   gene     = c("TOX", "HAVCR2", "GZMB", "PRF1", "MKI67", "TCF7", "CCR7"),
+#'   category = c("Exhausted", "Exhausted", "Effector", "Effector",
+#'                "Proliferation", "Memory", "Memory")
+#' )
+#' heatmap_meta(
+#'   object     = obj,
+#'   features   = feat_df,
+#'   groups     = c("Chronic Pre-DAA", "Chronic Post-DAA", "ACTG Pre-DAA"),
+#'   mark_genes = c("TOX", "GZMB", "TCF7")
+#' )
+#' }
+#'
+#' @export
+heatmap_meta.V2 <- function(object,
+                            features,
+                            groups,
+                            idents            = NULL,
+                            mark_genes        = NULL,
+                            mark_fontsize     = 10,
+                            mark_fontface     = "bold",
+                            row_fontsize      = 10,
+                            show_all_labels   = FALSE,
+                            normalize         = TRUE,
+                            cluster_rows      = FALSE,
+                            cluster_cols      = FALSE,
+                            scale             = "row",
+                            title             = NULL,
+                            col_names_angle   = 45,
+                            col_names_fontsize = 10,
+                            annotation_colors = NULL,
+                            heatmap_colors    = c("navy", "white", "firebrick3"),
+                            file_name         = NULL,
+                            file_width        = NULL,
+                            file_height       = NULL,
+                            ...) {
+
+  # ── 0. Dependencies ────────────────────────────────────────────────────────
+  required_pkgs <- c("ComplexHeatmap", "circlize", "grid", "Seurat",
+                     "dplyr", "tidyr", "tibble", "scales")
+  invisible(lapply(required_pkgs, function(p) {
+    if (!requireNamespace(p, quietly = TRUE))
+      stop("Package '", p, "' is required. Install it first.")
+  }))
+
+  # ── 1. Set default idents column ───────────────────────────────────────────
+  if (is.null(idents)) idents <- "cohort_tp"
+
+  # ── 2. Parse features — vector or data frame ───────────────────────────────
+  if (is.data.frame(features)) {
+    feat_df      <- features
+    gene_vec     <- as.character(feat_df[[1]])
+    category_vec <- as.character(feat_df[[2]])
+    annot_col_name   <- colnames(feat_df)[2]
+    category_levels  <- unique(category_vec)
+
+    # Gaps at category boundaries (for ComplexHeatmap row_split or gap lines)
+    gaps_row <- which(diff(as.integer(factor(category_vec, levels = category_levels))) != 0)
+
+    # Annotation colors
+    if (is.null(annotation_colors)) {
+      color_vec <- scales::hue_pal()(length(category_levels))
+    } else {
+      color_vec <- annotation_colors
+    }
+    annot_color_map <- stats::setNames(
+      color_vec[seq_along(category_levels)],
+      category_levels
+    )
+
+    # Row annotation data frame
+    gene_annotation <- data.frame(
+      cat = factor(category_vec, levels = category_levels),
+      row.names = gene_vec,
+      stringsAsFactors = FALSE
+    )
+    colnames(gene_annotation) <- annot_col_name
+
+  } else {
+    gene_vec        <- as.character(features)
+    gene_annotation <- NULL
+    gaps_row        <- NULL
+    annot_color_map <- NULL
+    annot_col_name  <- NULL
+  }
+
+  # ── 3. Normalize if requested ──────────────────────────────────────────────
+  if (normalize) object <- Seurat::NormalizeData(object)
+
+  # ── 4. Intersect with available genes (preserving order) ───────────────────
+  gene_vec <- intersect(gene_vec, rownames(object))
+  if (length(gene_vec) == 0) stop("None of the specified genes found in the object.")
+
+  # ── 5. Extract and aggregate expression ────────────────────────────────────
+  expression_matrix <- as.data.frame(Seurat::GetAssayData(object, layer = "data"))
+  expression_matrix <- expression_matrix[gene_vec, ]
+  cell_annotations  <- object[[idents, drop = TRUE]]
+
+  grouped_expression <- expression_matrix %>%
+    tibble::rownames_to_column(var = "gene") %>%
+    tidyr::pivot_longer(-gene, names_to = "cell", values_to = "expression") %>%
+    dplyr::left_join(
+      data.frame(cell = colnames(expression_matrix), cell_type = cell_annotations),
+      by = "cell"
+    ) %>%
+    dplyr::group_by(gene, cell_type) %>%
+    dplyr::summarize(mean_expression = mean(expression), .groups = "drop") %>%
+    tidyr::pivot_wider(names_from = cell_type, values_from = mean_expression)
+
+  mat <- as.matrix(grouped_expression[, -1])
+  rownames(mat) <- grouped_expression$gene
+  mat <- mat[gene_vec, groups]
+
+  # ── 6. Scale matrix ────────────────────────────────────────────────────────
+  if (scale == "row") {
+    mat <- t(scale(t(mat)))
+  } else if (scale == "column") {
+    mat <- scale(mat)
+  }
+  # Replace any NaN produced by zero-variance rows
+  mat[is.nan(mat)] <- 0
+
+  # ── 7. Color function ──────────────────────────────────────────────────────
+  col_fun <- circlize::colorRamp2(
+    breaks = c(min(mat, na.rm = TRUE), 0, max(mat, na.rm = TRUE)),
+    colors = heatmap_colors
+  )
+
+  # ── 8. Build left annotation (category sidebar) ────────────────────────────
+  left_anno <- NULL
+  if (!is.null(gene_annotation)) {
+    cat_vec <- gene_annotation[[annot_col_name]]
+    left_anno <- ComplexHeatmap::rowAnnotation(
+      df  = gene_annotation,
+      col = stats::setNames(list(annot_color_map), annot_col_name),
+      annotation_name_side = "top",
+      show_legend = TRUE
+    )
+  }
+
+  # ── 9. Build right annotation (anno_mark for highlighted genes) ────────────
+  right_anno <- NULL
+  if (!is.null(mark_genes)) {
+    mark_genes <- intersect(mark_genes, rownames(mat))
+    if (length(mark_genes) == 0) {
+      warning("None of the mark_genes found in the filtered gene list. Skipping anno_mark.")
+    } else {
+      mark_idx <- which(rownames(mat) %in% mark_genes)
+      right_anno <- ComplexHeatmap::rowAnnotation(
+        highlight = ComplexHeatmap::anno_mark(
+          at         = mark_idx,
+          labels     = rownames(mat)[mark_idx],
+          labels_gp  = grid::gpar(fontsize = mark_fontsize, fontface = mark_fontface),
+          link_width = grid::unit(5, "mm"),
+          padding    = grid::unit(1, "mm")
+        )
+      )
+    }
+  }
+
+  # ── 10. Row label display logic ────────────────────────────────────────────
+  # If mark_genes is provided: hide all row names (anno_mark handles them)
+  # If show_all_labels: show all at row_fontsize (only sensible for small sets)
+  # Otherwise: hide all row names
+  if (!is.null(mark_genes) && length(intersect(mark_genes, rownames(mat))) > 0) {
+    show_rn     <- FALSE
+    rn_gp       <- grid::gpar(fontsize = row_fontsize)
+  } else if (show_all_labels) {
+    show_rn     <- TRUE
+    rn_gp       <- grid::gpar(fontsize = row_fontsize)
+  } else {
+    show_rn     <- FALSE
+    rn_gp       <- grid::gpar(fontsize = row_fontsize)
+  }
+
+  # ── 11. Row gap lines at category boundaries ───────────────────────────────
+  # ComplexHeatmap handles gaps via row_split; we use a simple gap vector approach
+  row_split <- NULL
+  if (!is.null(gene_annotation) && !cluster_rows) {
+    row_split <- factor(
+      gene_annotation[[annot_col_name]],
+      levels = unique(as.character(gene_annotation[[annot_col_name]]))
+    )
+  }
+
+  # ── 12. Build Heatmap ──────────────────────────────────────────────────────
+  ht <- ComplexHeatmap::Heatmap(
+    mat,
+    name                  = scale,          # legend title
+    col                   = col_fun,
+    cluster_rows          = cluster_rows,
+    cluster_columns       = cluster_cols,
+    show_row_names        = show_rn,
+    row_names_gp          = rn_gp,
+    show_column_names     = TRUE,
+    row_dend_reorder = F,
+    column_names_rot      = col_names_angle,
+    column_names_gp       = grid::gpar(fontsize = col_names_fontsize),
+    column_title          = title,
+    left_annotation       = left_anno,
+    right_annotation      = right_anno,
+    row_split             = row_split,
+    row_title_gp          = grid::gpar(fontsize = 9),
+    row_gap               = grid::unit(2, "mm"),
+    border                = FALSE,
+    use_raster            = nrow(mat) > 500,   # rasterize for large matrices
+    raster_quality        = 5,
+    ...
+  )
+
+  # ── 13. Draw and optionally save ───────────────────────────────────────────
+  if (!is.null(file_name)) {
+    w <- file_width  %||% (length(groups)  * 0.5 + 5)
+    h <- file_height %||% (length(gene_vec) * 0.25 + 4)
+    png(filename = file_name,
+        width    = w,
+        height   = h,
+        units    = "in",
+        res      = 200)
+    ComplexHeatmap::draw(ht)
+    dev.off()
+    message("Heatmap saved to: ", file_name)
+  }
+
+  ComplexHeatmap::draw(ht)
+  invisible(ht)
+}
+
+# ── Null-coalescing helper (base R compatible) ──────────────────────────────
+`%||%` <- function(a, b) if (!is.null(a)) a else b
 
 
 
@@ -1772,15 +2089,15 @@ venn_plots <- function(object,
     # Filter genes based on direction
     if (direction == "up") {
       filtered_genes <- rownames(
-        markers %>% dplyr::filter(p_val_adj <= p_adj_cutoff, avg_log2FC >= log2fc_threshold)
+        markers %>% dplyr::filter(p_val_adj < p_adj_cutoff, avg_log2FC >= log2fc_threshold)
       )
     } else if (direction == "down") {
       filtered_genes <- rownames(
-        markers %>% dplyr::filter(p_val_adj <= p_adj_cutoff, avg_log2FC <= -log2fc_threshold)
+        markers %>% dplyr::filter(p_val_adj < p_adj_cutoff, avg_log2FC <= -log2fc_threshold)
       )
     } else {  # both
       filtered_genes <- rownames(
-        markers %>% dplyr::filter(p_val_adj <= p_adj_cutoff, abs(avg_log2FC) >= log2fc_threshold)
+        markers %>% dplyr::filter(p_val_adj < p_adj_cutoff, abs(avg_log2FC) >= log2fc_threshold)
       )
     }
 
@@ -1816,8 +2133,8 @@ venn_plots <- function(object,
   if (is.null(subtitle)) {
     subtitle <- paste0(
       "min.pct = ", min_pct,
-      "  |log2FC| >= ", log2fc_threshold,
-      "  p.adj <= ", p_adj_cutoff
+      "  |log2FC| >= ", round(log2fc_threshold,3),
+      "  p.adj < ", p_adj_cutoff
     )
   }
 
@@ -1827,7 +2144,7 @@ venn_plots <- function(object,
     fit,
     fills = fills[1:length(genes_list)],
     alpha = alpha,
-    labels = list(font = 1, cex = label_cex),
+    labels = list(font = 0.6, cex = label_cex),
     quantities = list(cex = quantity_cex),
     edges = TRUE,
     main = main
@@ -2886,3 +3203,191 @@ boxplot_jitter <- function(
 
   return(p)
 }
+
+
+#' Rounded tile geom (internal helper)
+#'
+#' A \code{ggplot2} geom identical to \code{\link[ggplot2]{geom_tile}} but
+#' draws each tile as a rounded rectangle via
+#' \code{\link[grid]{roundrectGrob}}.
+#'
+#' @param mapping Set of aesthetic mappings created by \code{\link[ggplot2]{aes}}.
+#' @param data The data to be displayed in this layer.
+#' @param stat The statistical transformation to use.
+#' @param position Position adjustment.
+#' @param radius A \code{\link[grid]{unit}} object for the corner radius.
+#'   Default \code{grid::unit(2, "pt")}.
+#' @param na.rm If \code{FALSE}, missing values are removed with a warning.
+#' @param show.legend Logical. Should this layer be included in the legends?
+#' @param inherit.aes If \code{FALSE}, overrides the default aesthetics.
+#' @param ... Other arguments passed to the layer.
+#' @keywords internal
+.geom_choco_tile <- function(mapping = NULL, data = NULL, stat = "identity",
+                             position = "identity", ...,
+                             radius = grid::unit(2, "pt"),
+                             na.rm = FALSE, show.legend = NA,
+                             inherit.aes = TRUE) {
+  GeomChocolateTile <- ggplot2::ggproto(
+    "GeomChocolateTile", ggplot2::GeomTile,
+    draw_panel = function(self, data, panel_params, coord,
+                          radius = grid::unit(2, "pt")) {
+      coords <- coord$transform(data, panel_params)
+      grobs  <- lapply(seq_len(nrow(coords)), function(i) {
+        grid::roundrectGrob(
+          x = coords$x[i], y = coords$y[i],
+          width  = coords$xmax[i] - coords$xmin[i],
+          height = coords$ymax[i] - coords$ymin[i],
+          r      = radius,
+          gp     = grid::gpar(
+            fill = coords$fill[i],
+            col  = coords$colour[i],
+            lwd  = coords$linewidth[i] * ggplot2::.pt
+          ),
+          default.units = "native"
+        )
+      })
+      do.call(grid::grobTree, grobs)
+    }
+  )
+  ggplot2::layer(
+    geom        = GeomChocolateTile,
+    mapping     = mapping,
+    data        = data,
+    stat        = stat,
+    position    = position,
+    show.legend = show.legend,
+    inherit.aes = inherit.aes,
+    params      = list(radius = radius, na.rm = na.rm, ...)
+  )
+}
+
+
+#' Create a chocolate bar annotation to replace bulky text labels
+#'
+#' Generates a compact tile-based annotation to sit alongside a
+#' visualization, encoding sample metadata (e.g. cohort, timepoint, mutation status)
+#' as coloured rows of rounded tiles — resembling a segmented chocolate bar.
+#'
+#' @param anno_df A \code{data.frame} where the first column is the x-axis
+#'   identifier (matching the category order; won't become annotation) and each subsequent column
+#'   is an annotation category. Column
+#'   order maps directly to display order: the first annotation column (second column) appears
+#'   at the top of the bar, the last at the bottom.
+#' @param palettes A named \code{list} of named character vectors, one entry
+#'   per annotation column. Names of the list must match the annotation column
+#'   names of \code{anno_df}. Within each vector, names are levels and values
+#'   are hex colour strings. The order will be respected for legend.
+#' @param tile_width Numeric in \code{[0, 1]}. Width of each tile relative to
+#'   the spacing between x positions. Default \code{0.9}.
+#' @param tile_radius A \code{\link[grid]{unit}} object controlling the corner
+#'   radius of each rounded tile. Default \code{grid::unit(2, "pt")}.
+#' @param gap Numeric. Line width of the white border drawn between tiles.
+#'   Default \code{0.3}.
+#'
+#' @return A \code{ggplot} object.
+#'
+#' @examples
+#' \dontrun{
+#' anno_df <- data.frame(
+#'   sample    = c("S1", "S2", "S3"),
+#'   Cohort    = c("A", "B", "A"),
+#'   Timepoint = c("Pre", "Post", "Pre")
+#' )
+#' palettes <- list(
+#'   Cohort    = c("A" = "#1379D3", "B" = "#C43E96"),
+#'   Timepoint = c("Pre" = "black",  "Post" = "lightgrey")
+#' )
+#' make_choco_bar(anno_df, palettes)
+#' }
+#'
+#' @importFrom ggplot2 ggplot aes layer ggproto GeomTile scale_fill_manual
+#'   scale_x_discrete scale_y_discrete guide_legend labs theme_minimal theme
+#'   element_blank element_text unit
+#' @importFrom ggnewscale new_scale_fill
+#' @importFrom tidyr pivot_longer
+#' @importFrom dplyr all_of filter
+#' @importFrom grid unit roundrectGrob grobTree gpar
+#' @export
+make_choco_bar <- function(anno_df,
+                           palettes,
+                           tile_width  = 0.9,
+                           tile_radius = grid::unit(2, "pt"),
+                           gap         = 0.3) {
+
+  id_col   <- names(anno_df)[1]
+  cat_cols <- names(anno_df)[-1]
+
+  # validate palettes
+  missing_pals <- setdiff(cat_cols, names(palettes))
+  if (length(missing_pals))
+    stop("No palette supplied for: ", paste(missing_pals, collapse = ", "))
+
+  # x factor levels follow row order of anno_df
+  anno_df[[id_col]] <- factor(anno_df[[id_col]], levels = anno_df[[id_col]])
+
+  # factor each category column: respect existing factors
+  for (col in cat_cols) {
+    anno_df[[col]] <- factor(anno_df[[col]], levels = unique(anno_df[[col]]))
+  }
+
+  # pivot long
+  anno_long <- anno_df |>
+    tidyr::pivot_longer(
+      cols      = dplyr::all_of(cat_cols),
+      names_to  = "category",
+      values_to = "value"
+    )
+  anno_long$category <- factor(anno_long$category, levels = cat_cols)
+
+  # build plot, layering one fill scale per category
+  p <- ggplot2::ggplot(
+    anno_long,
+    ggplot2::aes(x = .data[[id_col]], y = category)
+  )
+
+  for (i in seq_along(cat_cols)) {
+    cat        <- cat_cols[i]
+    pal        <- palettes[[cat]]
+    layer_data <- dplyr::filter(anno_long, category == cat)
+
+    p <- p +
+      ggnewscale::new_scale_fill() +
+      .geom_choco_tile(
+        data      = layer_data,
+        mapping   = ggplot2::aes(fill = value),
+        color     = "white",
+        linewidth = gap,
+        width     = tile_width,
+        radius    = tile_radius
+      ) +
+      ggplot2::scale_fill_manual(
+        values = pal,
+        name   = cat,
+        breaks = names(pal),
+        guide  = ggplot2::guide_legend(
+          order        = i,
+          ncol         = 1,
+          override.aes = list(size = 3)
+        )
+      )
+  }
+
+  p +
+    ggplot2::scale_x_discrete(expand = c(0, 0)) +
+    ggplot2::scale_y_discrete(limits = rev(cat_cols), expand = c(0, 0)) +
+    ggplot2::labs(x = NULL, y = NULL) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(
+      panel.grid            = ggplot2::element_blank(),
+      axis.text.x           = ggplot2::element_blank(),
+      axis.ticks.x          = ggplot2::element_blank(),
+      axis.text.y           = ggplot2::element_text(size = 9, face = "bold"),
+      legend.position       = "bottom",
+      legend.text           = ggplot2::element_text(size = 8),
+      legend.key.size       = ggplot2::unit(0.4, "cm"),
+      legend.box            = "horizontal",
+      legend.spacing.x      = ggplot2::unit(0.3, "cm"),
+      legend.title.position = "top"
+    )
+}
+

@@ -47,7 +47,7 @@ in the comparison, typically the "control" group).}
 significant genes. Default is 1.}
 
 \item{p_cutoff}{Numeric value for adjusted p-value cutoff to highlight significant
-genes. Default is 0.01.}
+genes. Default is 0.05.}
 
 \item{file_name}{Optional character string for output file prefix. If provided,
 plots will be saved as PNG files. If NULL, plots are displayed but not saved.

@@ -867,6 +867,8 @@ clustering <- function(
 #' @param fontsize Numeric. Font size of row/column gene name labels (default = 3).
 #' @param bold_genes Character vector of gene names to render in bold on the heatmap row labels.
 #'   Only applies in non-transpose mode. Default is NULL (no bolding).
+#' @param italic_genes Logical. If \code{TRUE}, renders all gene names in italic font.
+#'   Interacts with \code{bold_genes} to create bold-italic labels if both apply (default = FALSE).
 #' @param transpose Logical. If \code{TRUE}, transposes the heatmap so that genes appear on the
 #'   x-axis (columns) and cells on the y-axis (rows). Cluster identity levels are reversed to
 #'   maintain ascending order (default = FALSE).
@@ -898,6 +900,7 @@ heatmap_cell_level <- function(object,
                                height = NULL,
                                fontsize = 3,
                                bold_genes = NULL,
+                               italic_genes = FALSE,
                                transpose = FALSE,
                                protein_features = NULL,
                                protein_zlim = c(-2, 2),
@@ -913,8 +916,8 @@ heatmap_cell_level <- function(object,
     genes_to_plot <- features$gene
   }
   
-  obj_hm <- ScaleData(object, features = genes_to_plot)
-  mat <- GetAssayData(obj_hm, layer = "scale.data")
+  obj_hm <- Seurat::ScaleData(object, features = genes_to_plot)
+  mat <- Seurat::GetAssayData(obj_hm, layer = "scale.data")
   mat <- mat[intersect(genes_to_plot, rownames(mat)), ]
   mat <- mat[, rownames(meta)]
   mat <- mat[rowSums(mat != 0) > 0, ]
@@ -942,7 +945,7 @@ heatmap_cell_level <- function(object,
       }
     }))
     
-    mat <- mat[, sampled_cells]
+    mat  <- mat[, sampled_cells]
     meta <- meta[sampled_cells, ]
   }
   
@@ -950,56 +953,82 @@ heatmap_cell_level <- function(object,
   p_prot <- NULL
   if (!is.null(protein_features)) {
     
-    if (transpose) {
-      all_prot_df   <- Seurat::FetchData(object, vars = protein_features, cells = rownames(object@meta.data))
-      cells_with_prot <- rownames(all_prot_df)[rowSums(!is.na(all_prot_df)) > 0]
-      
-      target_n_prot <- ncol(mat) / length(levels(meta[[idents]]))
-      
-      set.seed(456)
-      prot_cells <- unlist(lapply(levels(meta[[idents]]), function(grp) {
-        grp_all_cells  <- rownames(object@meta.data)[object@meta.data[[idents]] == grp]
-        grp_prot_cells <- intersect(grp_all_cells, cells_with_prot)
-        grp_no_prot    <- setdiff(grp_all_cells, cells_with_prot)
-        
-        if (length(grp_prot_cells) >= target_n_prot) {
-          sample(grp_prot_cells, target_n_prot)
-        } else {
-          n_fill <- target_n_prot - length(grp_prot_cells)
-          n_fill <- min(n_fill, length(grp_no_prot))
-          c(grp_prot_cells, sample(grp_no_prot, n_fill))
-        }
-      }))
-      
-      message("Protein cell selection: ", length(prot_cells), " cells (prioritizing protein-available cells).")
-      
-    } else {
-      prot_cells <- rownames(meta)
-    }
+    # Fetch ALL available protein data independently from the full object
+    all_prot_df <- Seurat::FetchData(object, vars = protein_features)
     
-    prot_df <- Seurat::FetchData(object, vars = protein_features, cells = prot_cells)
+    # Determine how many cells are needed per group (mirrors gene matrix group sizes)
+    target_n_prot <- if (downsample != FALSE) target_n else NULL
     
-    if (transpose) {
-      missing_cells <- setdiff(prot_cells, rownames(prot_df))
-      if (length(missing_cells) > 0) {
-        na_rows <- matrix(NA, nrow = length(missing_cells), ncol = length(protein_features),
-                          dimnames = list(missing_cells, protein_features))
-        prot_df <- rbind(prot_df, as.data.frame(na_rows))
+    # For each group, determine n_needed (same count as gene matrix for that group)
+    group_n_needed <- sapply(levels(meta[[idents]]), function(grp) {
+      if (is.null(target_n_prot)) sum(meta[[idents]] == grp) else target_n_prot
+    })
+    
+    # Per-group: prioritise cells with the most proteins available (coverage-based)
+    prot_cells_ordered <- unlist(lapply(levels(meta[[idents]]), function(grp) {
+      all_grp_cells <- rownames(object@meta.data)[object@meta.data[[idents]] == grp]
+      n_needed      <- group_n_needed[[grp]]
+      
+      # Score each cell by how many proteins it has data for
+      grp_cells_with_prot <- intersect(all_grp_cells, rownames(all_prot_df))
+      protein_coverage    <- rowSums(!is.na(all_prot_df[grp_cells_with_prot, , drop = FALSE]))
+      # Sort descending so highest-coverage cells are preferred
+      covered_cells <- names(sort(protein_coverage, decreasing = TRUE))
+      lacking_cells <- setdiff(all_grp_cells, rownames(all_prot_df))
+      
+      set.seed(123)
+      if (length(covered_cells) >= n_needed) {
+        sample(covered_cells[seq_len(n_needed)])  # sample within top-n to avoid positional bias
+      } else {
+        n_pad <- n_needed - length(covered_cells)
+        c(covered_cells,
+          if (length(lacking_cells) > 0) sample(lacking_cells, min(n_pad, length(lacking_cells))) else character(0))
       }
-      prot_df <- prot_df[prot_cells, , drop = FALSE]
-    } else {
-      prot_df <- prot_df[rowSums(!is.na(prot_df)) > 0, , drop = FALSE]
+    }))
+    
+    # Build prot_df aligned to prot_cells_ordered; per-cell per-protein NAs preserved naturally
+    prot_df <- all_prot_df[intersect(prot_cells_ordered, rownames(all_prot_df)), , drop = FALSE]
+    missing_cells <- setdiff(prot_cells_ordered, rownames(all_prot_df))
+    if (length(missing_cells) > 0) {
+      na_rows <- matrix(NA, nrow = length(missing_cells), ncol = length(protein_features),
+                        dimnames = list(missing_cells, protein_features))
+      prot_df <- rbind(prot_df, as.data.frame(na_rows))
     }
+    prot_df <- prot_df[prot_cells_ordered, , drop = FALSE]
+    
+    # Reorder within each group: most protein coverage first, NAs sink to bottom
+    prot_idents_tmp <- factor(object@meta.data[prot_cells_ordered, idents],
+                              levels = levels(meta[[idents]]))
+    prot_cells_ordered <- unlist(lapply(levels(prot_idents_tmp), function(grp) {
+      grp_cells <- prot_cells_ordered[prot_idents_tmp == grp]
+      coverage  <- rowSums(!is.na(prot_df[grp_cells, , drop = FALSE]))
+      grp_cells[order(coverage, decreasing = TRUE)]
+    }))
+    prot_df     <- prot_df[prot_cells_ordered, , drop = FALSE]
+    prot_idents <- factor(object@meta.data[prot_cells_ordered, idents],
+                          levels = levels(meta[[idents]]))
+    
+    # shuffle available value
+    set.seed(123)
+    prot_cells_ordered <- unlist(lapply(levels(prot_idents), function(grp) {
+      grp_cells <- prot_cells_ordered[prot_idents == grp]
+      # Split into cells with full data and NA cells, shuffle only the full ones
+      has_na    <- rowSums(is.na(prot_df[grp_cells, , drop = FALSE])) > 0
+      full_cells <- sample(grp_cells[!has_na])
+      na_cells   <- grp_cells[has_na]
+      c(full_cells, na_cells)
+    }))
+    prot_df     <- prot_df[prot_cells_ordered, , drop = FALSE]
+    prot_idents <- factor(object@meta.data[prot_cells_ordered, idents],
+                          levels = levels(meta[[idents]]))
     
     n_na         <- sum(is.na(prot_df))
     n_cells_prot <- nrow(prot_df)
     message(n_cells_prot, " cells in protein matrix (vs ", ncol(mat), " cells in gene matrix).")
     if (n_na > 0) message(n_na, " NA values will be shown in grey.")
     
-    prot <- t(as.matrix(prot_df))
     
-    prot_meta_idents <- object@meta.data[colnames(prot), idents, drop = FALSE]
-    prot_idents      <- factor(prot_meta_idents[[idents]], levels = levels(meta[[idents]]))
+    prot <- t(as.matrix(prot_df))
     
     if (scale_protein) {
       prot <- t(scale(t(prot), center = TRUE, scale = TRUE))
@@ -1010,8 +1039,8 @@ heatmap_cell_level <- function(object,
   
   if (is.null(height)) {
     n_genes <- nrow(mat)
-    height <- 8 + (n_genes - 120) * (2 / 50)
-    height <- max(height, 6)
+    height  <- 8 + (n_genes - 120) * (2 / 50)
+    height  <- max(height, 6)
     message("Automatically calculated height: ", round(height, 2), " inches for ", n_genes, " genes")
   }
   
@@ -1055,12 +1084,14 @@ heatmap_cell_level <- function(object,
     colors = c("#4ab340", "white", "orange")
   )
   
-  # --- Build fontface vector for bold gene labels ---
-  # In normal mode: genes are rows; in transpose mode: genes are columns (after t(mat))
+  # --- Build fontface vector for bold/italic gene labels ---
+  base_font <- ifelse(italic_genes, "italic", "plain")
+  bold_font <- ifelse(italic_genes, "bold.italic", "bold")
+  
   if (!is.null(bold_genes)) {
-    gene_fontface <- ifelse(rownames(mat) %in% bold_genes, "bold", "plain")
+    gene_fontface <- ifelse(rownames(mat) %in% bold_genes, bold_font, base_font)
   } else {
-    gene_fontface <- "plain"
+    gene_fontface <- base_font
   }
   
   # --- Transpose block ---
@@ -1086,9 +1117,8 @@ heatmap_cell_level <- function(object,
       show_row_names = FALSE,
       show_column_names = TRUE,
       column_names_gp = grid::gpar(fontsize = fontsize, fontface = gene_fontface),
-      # row_title = "Cells by clusters",
       column_title = "Genes",
-      heatmap_legend_param = list(title = "Z-score")
+      heatmap_legend_param = list(title = "Gene\nZ-score")
     )
     
     if (!is.null(protein_features)) {
@@ -1129,7 +1159,6 @@ heatmap_cell_level <- function(object,
       show_column_names = FALSE,
       show_row_names = TRUE,
       row_title = "Genes",
-      # column_title = "Cells by clusters",
       row_names_gp = grid::gpar(fontsize = fontsize, fontface = gene_fontface),
       heatmap_legend_param = list(title = "Z-score")
     )
@@ -1159,6 +1188,14 @@ heatmap_cell_level <- function(object,
     ComplexHeatmap::draw(p)
     dev.off()
     message("Heatmap saved to ", file_name)
+  }
+  if (!is.null(protein_features)) {
+    na_summary <- prot_df |>
+      dplyr::mutate(ident = prot_idents) |>
+      dplyr::group_by(ident) |>
+      dplyr::summarise(dplyr::across(everything(), \(x) sum(is.na(x))))
+    print("NAs in protein matrix:")
+    print(na_summary)
   }
   
   return(p)

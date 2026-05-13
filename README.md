@@ -40,32 +40,33 @@ You can install the development version of BioYourOwnBowl from
 source("~/Downloads/install.R")  # Or wherever you saved it
 ```
 
-If quick install fails, do it manually:
+#### If quick install fails, do it manually:
 
 ``` r
 # install.packages("remotes")
-test_lib <- "~/R/bioyourownbowl_library"
+test_lib <- path.expand("~/R/bioyourownbowl_library")
+
 if (dir.exists(test_lib)) unlink(test_lib, recursive = TRUE)
 dir.create(test_lib, recursive = TRUE)
 
 # Now set library paths
-.libPaths(test_lib)
+.libPaths(c(test_lib, .libPaths()))
 
 # install GitHub-specific dependencies
-remotes::install_github("satijalab/seurat@v5.1.0", lib = test_lib)
-remotes::install_github("tidyverse/ggplot2@v3.5.2", lib = test_lib)
-remotes::install_github("settylab/convert2anndata", lib = test_lib)
-remotes::install_github("jokergoo/ComplexHeatmap", lib = test_lib)
-remotes::install_github("kevinblighe/EnhancedVolcano", lib = test_lib)
+remotes::install_github("satijalab/seurat@v5.1.0")
+remotes::install_github("tidyverse/ggplot2@v3.5.2")
+remotes::install_github("settylab/convert2anndata")
+remotes::install_github("jokergoo/ComplexHeatmap")
+remotes::install_github("kevinblighe/EnhancedVolcano")
 
 # install BioYourOwnBowl
-remotes::install_github("june-zhang-bioinfo/BioYourOwnBowl", lib = test_lib)
+remotes::install_github("june-zhang-bioinfo/BioYourOwnBowl")
 ```
 
 After installation, indicating the library path before each use:
 
 ``` r
-.libPaths(c("~/R/bioyourownbowl_library", .libPaths()))
+.libPaths(c(path.expand("~/R/bioyourownbowl_library"), .libPaths()))
 library(BioYourOwnBowl)
 ```
 

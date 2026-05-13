@@ -22,6 +22,7 @@ heatmap_cell_level(
   height = NULL,
   fontsize = 3,
   bold_genes = NULL,
+  italic_genes = FALSE,
   transpose = FALSE,
   protein_features = NULL,
   protein_zlim = c(-2, 2),
@@ -69,6 +70,9 @@ If \code{NULL}, the plot is not saved (default = NULL).}
 
 \item{bold_genes}{Character vector of gene names to render in bold on the heatmap row labels.
 Only applies in non-transpose mode. Default is NULL (no bolding).}
+
+\item{italic_genes}{Logical. If \code{TRUE}, renders all gene names in italic font.
+Interacts with \code{bold_genes} to create bold-italic labels if both apply (default = FALSE).}
 
 \item{transpose}{Logical. If \code{TRUE}, transposes the heatmap so that genes appear on the
 x-axis (columns) and cells on the y-axis (rows). Cluster identity levels are reversed to
