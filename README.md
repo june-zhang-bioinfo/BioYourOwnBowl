@@ -147,7 +147,6 @@ seurat_obj <- optimize_single_cell(
 
 ### cNMF Interpretaion
 
-- `cnmf_bar_plots()` - Visualize top genes per program.
 - `cnmf_umaps()` - UMAP plots for cNMF program values.
 - `cnmf_top_programs` - Assign Primary, Secondary, Tietiary and
   Quaternary programs to cells.
