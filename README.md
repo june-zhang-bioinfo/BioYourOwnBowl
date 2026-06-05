@@ -22,52 +22,16 @@ assemble and customize their own analysis pipeline.
 
 ## Installation
 
-This package is strict with dependencies versions for reproducibilty and
-compatibility. Therefore, a new library path is ideal to separate the
-package with user’s existing packages. This makes sure the independence
-of BioYourOwnBowl and minimizes the installation by using shared
-dependencies with default library.
-
 You can install the development version of BioYourOwnBowl from
 [GitHub](https://github.com/june-zhang-bioinfo/BioYourOwnBowl) with:
 
-### Quick install (recommended):
-
-1.  Download install.R
-2.  In your RStudio, run
-
-``` r
-source("~/Downloads/install.R")  # Or wherever you saved it
-```
-
-#### If quick install fails, do it manually:
-
 ``` r
 # install.packages("remotes")
-test_lib <- path.expand("~/R/bioyourownbowl_library")
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
 
-if (dir.exists(test_lib)) unlink(test_lib, recursive = TRUE)
-dir.create(test_lib, recursive = TRUE)
-
-# Now set library paths
-.libPaths(c(test_lib, .libPaths()))
-
-# install GitHub-specific dependencies
-remotes::install_github("satijalab/seurat@v5.1.0")
-remotes::install_github("tidyverse/ggplot2@v3.5.2")
-remotes::install_github("settylab/convert2anndata")
-remotes::install_github("jokergoo/ComplexHeatmap")
-remotes::install_github("kevinblighe/EnhancedVolcano")
-
-# install BioYourOwnBowl
+BiocManager::install(c("enrichplot", "clusterProfiler"))
 remotes::install_github("june-zhang-bioinfo/BioYourOwnBowl")
-```
-
-After installation, indicating the library path before each use:
-
-``` r
-.libPaths(c(path.expand("~/R/bioyourownbowl_library"), .libPaths()))
-library(BioYourOwnBowl)
 ```
 
 ## Documentation
@@ -92,9 +56,9 @@ For a complete example workflow with detailed explanations, see
   scanpy, violin plots with pronounced non-zero distribution and
   statistical test, area proportional venn plots and treemaps.
 - **Interacte with Python**: configure python environment and run python
-  code in Rstudio.
-- **cNMF visualization**: top genes per program, programs projection on
-  UMAP, cNMF comparison heatmaps, gene locating.
+  in Rstudio.
+- **cNMF visualization**: programs projection on UMAP, cNMF comparison
+  heatmaps, gene locating.
 - **Batch correction support**: via Harmony.
 
 ## Quick Example
@@ -139,7 +103,7 @@ seurat_obj <- optimize_single_cell(
 
 ## Main Functions
 
-### Core Workflow
+### Core Pipeline
 
 - `optimize_single_cell()` - Full automated pipeline
 
@@ -209,7 +173,6 @@ The `optimize_single_cell()` function generates:
 - `PCs_top-genes.csv` - Top genes per principal component
 - `dimplot.pdf` - Dimplots showing clustering results
 - `k*_r*_barplot.png` - Cluster distribution plots
-- `k*_r*_dge.csv` - DGE results
 - `k*_r*_dotplot.pdf` - Dot plots for each clustering, including
   selected features and DGE
 - `k*_r*_heatmap.png` - Expression heatmaps for DGE
@@ -225,8 +188,18 @@ The `optimize_single_cell()` function generates:
 
 If you use this package in your research, please cite:
 
-    June Zhang (2025). BioYourOwnBowl: Single-cell RNA-seq Analysis Toolkits. 
+    June Zhang (2025). BioYourOwnBowl: Single-cell RNA-seq Analysis Tools. 
     R package version 0.1.0. https://github.com/june-zhang-bioinfo/BioYourOwnBowl
+
+## Acknowledgments
+
+This package was developed by June Zhang in the Lauer Kim Lab
+(<https://www.lauerkimlab.com>). The author gratefully acknowledges
+Georg Lauer, Arthur Kim, Elias Lattouf, Martin Villanueva, Suzan
+Dijkstra, Martin Feuerherd, Jasmin Mischke, Mohammad Oliaeimotlagh, and
+Giuseppe Andreacchio for helpful discussions, scientific insight,
+feature suggestions, testing, and feedback throughout the development of
+this package.
 
 ## License
 

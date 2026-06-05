@@ -513,9 +513,9 @@ prepare_h5ad <- function(
     assay <- Seurat::DefaultAssay(cnmf)
   }
 
-  # cnmf@assays[[assay]]$counts <- cnmf@assays[[assay]]$data
-  # cnmf@assays[[assay]]$data <- NULL
-  # cnmf@assays[[assay]]$scale.data <- NULL
+  cnmf@assays[[assay]]$counts <- cnmf@assays[[assay]]$data
+  cnmf@assays[[assay]]$data <- NULL
+  cnmf@assays[[assay]]$scale.data <- NULL
 
   cnmf@meta.data <- subset(cnmf@meta.data, select = metadata_vars)
 
@@ -1276,7 +1276,7 @@ tcr_treemaps <- function(
 #' @export
 heatmap_pseudobulk <- function(object,
                                             features,
-                                            groups,
+                                            groups = NULL,
                                             idents = NULL,
                                             pseudobulk_column = NULL,
                                             colors = NULL,
@@ -1291,6 +1291,10 @@ heatmap_pseudobulk <- function(object,
   # Set default column names if NULL
   if (is.null(idents)) {
     idents <- "cohort_tp"
+  }
+  
+  if (is.null(groups)) {
+    groups <- unique(object[[idents]])[[1]]%>% as.character()%>% str_sort()
   }
 
   if (is.null(pseudobulk_column)) {
@@ -1386,7 +1390,8 @@ heatmap_pseudobulk <- function(object,
     show_column_names = show_column_names,
     column_split = cohort_labels,
     col = circlize::colorRamp2(color_range, color_palette),
-    heatmap_legend_param = list(title = heatmap_title)
+    heatmap_legend_param = list(title = heatmap_title),
+    row_names_gp = grid::gpar(fontsize = 8)
   )
 
   return(hm)
@@ -1491,11 +1496,10 @@ heatmap_meta <- function(object,
     idents <- "cohort_tp"
   }
 
-  feat_df <- feat_df[as.character(feat_df[[1]]) %in% rownames(obj),]
-
   # 2. Parse features — vector or data frame
   if (is.data.frame(features)) {
     feat_df      <- features
+    feat_df <- feat_df[as.character(feat_df[[1]]) %in% rownames(obj),]
     gene_vec     <- as.character(feat_df[[1]])
     category_vec <- as.character(feat_df[[2]])
 
@@ -2162,180 +2166,6 @@ venn_plots <- function(object,
     markers = markers_list,
     genes = genes_list,
     euler_fit = fit
-  ))
-}
-
-
-#' Plot Top N Usage Columns From cNMF Gene Spectra
-#'
-#' This function reads cNMF gene spectra, normalizes them, extracts gene-level
-#' statistics (min/median/max) from a Seurat object, and produces barplots for
-#' the top-N contributing genes per program. It also returns a top-gene table.
-#'
-#' @param dir_path Character. Directory containing cNMF output files.
-#' @param object Seurat or SingleCellExperiment object containing normalized data.
-#' @param output_dir Directory where PNG plots should be saved.
-#' @param top_n Number of top genes to extract and plot (default = 30).
-#' @param show_metrics Logical. If TRUE, add min/median/max labels to bars.
-#' @param highlight_genes A gene list to be bold and red on barplots. If NULL, output without hightlight.
-#'
-#' @return A list containing:
-#'   \item{top_df}{Data frame of top-N genes per program}
-#'   \item{file_used}{Path to the CNMF spectrum file used}
-#'
-#' @export
-cnmf_bar_plots <- function(
-    dir_path,
-    object,
-    output_dir,
-    top_n = 30,
-    show_metrics = FALSE,
-    highlight_genes = NULL
-) {
-
-  # --- Setup and Data Loading (Unchanged) ---
-
-  if (!dir.exists(dir_path))
-    stop("dir_path does not exist.")
-
-  if (!dir.exists(output_dir))
-    dir.create(output_dir, recursive = TRUE)
-
-  file_name <- list.files(
-    dir_path,
-    pattern = "cnmf_run\\.gene_spectra_tpm.*\\.dt_0_20\\.txt$",
-    full.names = TRUE
-  )
-  if (length(file_name) == 0)
-    stop("No CNMF spectrum files found.")
-
-  file_name <- file_name[1]
-  gene_by_pro <- read.table(file_name, fill = TRUE, header = TRUE, row.names = 1)
-
-  # --- Extract top-N genes (table output) ---
-
-  # The top_df will store the raw gene names
-  top_matrix <- matrix(nrow = nrow(gene_by_pro), ncol = top_n)
-  rownames(top_matrix) <- rownames(gene_by_pro)
-
-  for (i in seq_len(nrow(gene_by_pro))) {
-    row_data <- as.numeric(gene_by_pro[i, ])
-    top_idx <- order(row_data, decreasing = TRUE)[1:top_n]
-    top_matrix[i, ] <- colnames(gene_by_pro)[top_idx]
-  }
-
-  top_df <- as.data.frame(t(top_matrix))
-  colnames(top_df) <- paste0("Usage_", colnames(top_df))
-
-  # --- Prepare output data frame for highlighting ---
-  if (!is.null(highlight_genes)) {
-    # Function to apply highlighting format (Markdown/HTML)
-    format_gene <- function(gene) {
-      if (gene %in% highlight_genes) {
-        # Use HTML/Markdown for bold and red text
-        return(paste0("<span style='color:red;'>**", gene, "**</span>"))
-      } else {
-        return(gene)
-      }
-    }
-  }
-
-  # --- Normalize data and extract metrics ---
-  gene_by_pro <- t(apply(gene_by_pro, 1, function(x) (x - min(x)) / (max(x) - min(x))))
-
-  norm_data <- SeuratObject::GetAssayData(object, layer = "data") |> as.matrix()
-  norm_data <- norm_data[colnames(gene_by_pro), ]
-
-  gene_medians <- matrixStats::rowMedians(norm_data)
-  gene_maxs    <- matrixStats::rowMaxs(norm_data)
-
-  norm_data[norm_data == 0] <- NA
-  gene_mins <- matrixStats::rowMins(norm_data, na.rm = TRUE)
-
-  # Dynamic plot size (Unchanged)
-  width_px  <- 1000
-  height_px <- 1000 + ((top_n - 30) * 20)
-
-  # --- Helper Plot Function (Modified) ---
-  plot_top_columns <- function(row_data, row_name, gene_mins, gene_medians, gene_maxs, highlight_genes) {
-
-    top_idx    <- order(row_data, decreasing = TRUE)[1:top_n] |> rev()
-    top_vals   <- row_data[top_idx] |> rev()
-    top_genes  <- names(top_vals)
-
-    # Apply highlighting format for PLOT LABELS
-    formatted_genes <- sapply(top_genes, function(gene) {
-      if (!is.null(highlight_genes) && gene %in% highlight_genes) {
-        # Use Markdown/HTML syntax for ggtext
-        return(paste0("<span style='color:red;'>**", gene, "**</span>"))
-      } else {
-        return(gene)
-      }
-    })
-
-    # Create factors from formatted genes
-    formatted_genes_factor <- factor(formatted_genes, levels = rev(formatted_genes))
-
-    if (show_metrics) {
-      plot_data <- data.frame(
-        Column     = formatted_genes_factor,
-        Value      = top_vals,
-        MinExpr    = round(gene_mins[top_genes], 4),
-        MedianExpr = round(gene_medians[top_genes], 4),
-        MaxExpr    = round(gene_maxs[top_genes], 4)
-      )
-    } else {
-      plot_data <- data.frame(
-        Column = formatted_genes_factor,
-        Value  = top_vals
-      )
-    }
-
-    p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = Column, y = Value, fill = Value)) +
-      ggplot2::geom_bar(stat = "identity") +
-      ggplot2::labs(
-        title = paste("Usage", row_name),
-        x = "",
-        y = "Values"
-      ) +
-      ggplot2::theme_classic() +
-      ggplot2::coord_flip() +
-      ggplot2::scale_fill_gradient(low = "#68bdde", high = "#de6868") +
-      # Use ggtext::element_markdown() to interpret the HTML/Markdown in the labels
-      ggplot2::theme(
-        axis.text.y = ggtext::element_markdown(),
-        axis.text.x = ggplot2::element_text(angle = 90, hjust = 1)
-      )
-
-    if (show_metrics) {
-      p <- p +
-        ggplot2::geom_text(
-          ggplot2::aes(label = paste0(MinExpr, "  ", MedianExpr, "  ", MaxExpr)),
-          hjust = 1,
-          size = 2
-        )
-    }
-
-    outfile <- file.path(output_dir, paste0("Usage_", row_name, ".png"))
-    grDevices::png(outfile, width = width_px, height = height_px, res = 200)
-    print(p)
-    grDevices::dev.off()
-  }
-
-  # --- Loop and plot ---
-  for (i in seq_len(nrow(gene_by_pro))) {
-    row_name <- rownames(gene_by_pro)[i]
-    row_data <- gene_by_pro[i, ]
-    # Pass the highlight_genes argument to the helper function
-    plot_top_columns(row_data, row_name, gene_mins, gene_medians, gene_maxs, highlight_genes)
-  }
-
-  message("Finished generating plots in: ", output_dir)
-
-  return(list(
-    # Return the data frame with HTML/Markdown formatting
-    top_df = top_df,
-    file_used = file_name
   ))
 }
 
@@ -3390,4 +3220,646 @@ make_choco_bar <- function(anno_df,
       legend.title.position = "top"
     )
 }
+
+#' Plot Cluster Composition by Group
+#'
+#' Computes per-patient cluster percentages and visualizes them as faceted
+#' boxplots with jittered individual-level dots. Each facet represents one
+#' cluster; each box represents one group level on the x-axis; each dot
+#' represents one patient time-point. Patients with zero cells in a cluster
+#' are shown as dots fixed at y = 0.
+#'
+#' @param obj A Seurat object. Metadata is extracted from \code{obj@meta.data},
+#'   which must contain columns named by \code{dot_col}, \code{box_col},
+#'   and \code{facet_col}.
+#' @param dot_col \code{character(1)}. Name of the metadata column whose
+#'   unique values define the individual dots (e.g. one row per
+#'   patient-timepoint).
+#' @param box_col \code{character(1)}. Name of the metadata column whose
+#'   levels appear as boxes on the x-axis within each facet (e.g.
+#'   cohort-timepoint-mutation category).
+#' @param facet_col \code{character(1)}. Name of the metadata column whose
+#'   levels define the facet panels (e.g. cluster identity).
+#' @param boxes \code{character} vector or \code{NULL} (default). Subset and
+#'   ordering of \code{box_col} levels to display. If \code{NULL}, all unique
+#'   values are used, sorted with \code{sort()} (handles both alphabetic and
+#'   numeric-string ordering).
+#' @param facets \code{character} vector or \code{NULL} (default). Subset and
+#'   ordering of \code{facet_col} levels to display as facet panels. If
+#'   \code{NULL}, all unique values are used, sorted with \code{sort()}.
+#' @param colors Named \code{character} vector mapping \code{box_col} levels
+#'   to hex color strings, or \code{NULL} (default). If \code{NULL}, ggplot2's
+#'   default discrete palette is used. Names must match the levels supplied to
+#'   (or derived for) \code{boxes}.
+#'
+#' @return Invisibly returns a \code{data.frame} (\code{pct_data_filled}) with
+#'   one row per patient-group-cluster combination, including zero-filled rows
+#'   for combinations with no cells. The ggplot is printed as a side effect.
+#'   Columns returned:
+#'   \describe{
+#'     \item{patient}{Value of \code{dot_col}.}
+#'     \item{group}{Value of \code{box_col}.}
+#'     \item{cluster}{Value of \code{facet_col}.}
+#'     \item{total_cells}{Total cells for that patient-group combination.}
+#'     \item{n_cells}{Cells in that cluster for that patient-group combination.}
+#'     \item{pct}{Percentage: \code{n_cells / total_cells * 100}.}
+#'     \item{is_zero}{Logical; \code{TRUE} for zero-filled rows.}
+#'   }
+#'
+#' @examples
+#' \dontrun{
+#' # Basic usage — all groups, all clusters, default colors
+#' pct <- dot_box_facet_plot(
+#'   obj        = seurat_obj,
+#'   dot_col = "patient_tp",
+#'   box_col   = "cohort_tp_mutation",
+#'   facet_col = "k30_r0.175"
+#' )
+#'
+#' # Subset to specific groups, custom order and colors
+#' base_colors <- c(
+#'   "Chronic Pre-DAA Conserved"  = "#1379D3",
+#'   "Chronic Post-DAA Conserved" = "#5aaff0",
+#'   "ACTG Pre-DAA Conserved"     = "#C43E96",
+#'   "ACTG Post-DAA Conserved"    = "#e07bc2"
+#' )
+#'
+#' pct <- dot_box_facet_plot(
+#'   obj         = seurat_obj,
+#'   dot_col = "patient_tp",
+#'   box_col   = "cohort_tp_mutation",
+#'   facet_col = "k30_r0.175",
+#'   boxes      = names(base_colors),
+#'   facets      = c("1", "2", "5", "7"),
+#'   colors      = base_colors
+#' )
+#'
+#' # Use make_shades() to auto-generate shades before passing colors
+#' shades <- c(
+#'   setNames(make_shades("#1379D3", 2), c("Chronic Pre-DAA Conserved",
+#'                                          "Chronic Post-DAA Conserved")),
+#'   setNames(make_shades("#C43E96", 2), c("ACTG Pre-DAA Conserved",
+#'                                          "ACTG Post-DAA Conserved"))
+#' )
+#' pct <- dot_box_facet_plot(
+#'   obj         = seurat_obj,
+#'   dot_col = "patient_tp",
+#'   box_col   = "cohort_tp_mutation",
+#'   facet_col = "k30_r0.175",
+#'   colors      = shades
+#' )
+#' }
+#'
+#' @seealso \code{\link{make_shades}} for generating shade palettes to pass to
+#'   \code{colors}.
+#'
+#' @importFrom dplyr mutate group_by ungroup summarize n left_join if_else
+#'   distinct filter
+#' @importFrom tidyr crossing
+#' @importFrom ggplot2 ggplot aes geom_boxplot geom_point facet_wrap
+#'   scale_fill_manual scale_color_manual position_jitter labs theme_minimal
+#'   theme element_text unit
+#'
+#' @export
+dot_box_facet_plot <- function(
+    obj,
+    dot_col,
+    box_col,
+    facet_col,
+    boxes  = NULL,
+    facets  = NULL,
+    colors  = NULL
+) {
+  # --- Input validation ---
+  stopifnot(
+    inherits(obj, "Seurat"),
+    is.character(dot_col), length(dot_col) == 1,
+    is.character(box_col),   length(box_col)   == 1,
+    is.character(facet_col), length(facet_col) == 1
+  )
+  
+  metadata <- obj@meta.data
+  
+  required_cols <- c(dot_col, box_col, facet_col)
+  missing_cols  <- setdiff(required_cols, colnames(metadata))
+  if (length(missing_cols) > 0) {
+    stop("Column(s) not found in obj@meta.data: ",
+         paste(missing_cols, collapse = ", "))
+  }
+  
+  # --- Resolve group / facet levels ---
+  if (is.null(boxes)) {
+    boxes <- sort(unique(metadata[[box_col]]))
+  }
+  if (is.null(facets)) {
+    facets <- sort(unique(metadata[[facet_col]]))
+  }
+  
+  # Subset metadata to requested boxes and facets
+  metadata <- metadata[metadata[[box_col]]   %in% boxes, , drop = FALSE]
+  metadata <- metadata[metadata[[facet_col]] %in% facets, , drop = FALSE]
+  
+  if (nrow(metadata) == 0) {
+    stop("No cells remain after filtering to the requested `boxes` and `facets`.")
+  }
+  
+  # --- Percentage calculation ---
+  pct_data <- metadata |>
+    dplyr::mutate(
+      patient = .data[[dot_col]],
+      group   = .data[[box_col]],
+      cluster = as.factor(.data[[facet_col]])
+    ) |>
+    dplyr::group_by(patient, group) |>
+    dplyr::mutate(total_cells = dplyr::n()) |>
+    dplyr::ungroup() |>
+    dplyr::group_by(patient, group, cluster, total_cells) |>
+    dplyr::summarize(n_cells = dplyr::n(), .groups = "drop") |>
+    dplyr::mutate(pct = n_cells / total_cells * 100)
+  
+  # --- Zero-fill missing patient x cluster combinations ---
+  all_patient_groups <- dplyr::distinct(pct_data, patient, group)
+  all_clusters       <- dplyr::distinct(pct_data, cluster)
+  full_grid          <- tidyr::crossing(all_patient_groups, all_clusters)
+  
+  pct_data_filled <- full_grid |>
+    dplyr::left_join(pct_data, by = c("patient", "group", "cluster")) |>
+    dplyr::mutate(
+      pct     = dplyr::if_else(is.na(pct), 0, pct),
+      is_zero = is.na(n_cells)
+    )
+  
+  # --- Apply factor ordering ---
+  pct_data_filled$group   <- factor(pct_data_filled$group,   levels = boxes)
+  pct_data_filled$cluster <- factor(pct_data_filled$cluster, levels = facets)
+  
+  # --- Build plot ---
+  p <- ggplot2::ggplot(pct_data_filled, ggplot2::aes(x = group, y = pct))
+  
+  # Boxplot layer (non-zero only)
+  box_aes <- if (!is.null(colors)) {
+    ggplot2::aes(fill = group)
+  } else {
+    ggplot2::aes(fill = group)
+  }
+  
+  p <- p +
+    ggplot2::geom_boxplot(
+      data          = dplyr::filter(pct_data_filled, !is_zero),
+      mapping       = ggplot2::aes(fill = group),
+      width         = 0.6,
+      outlier.shape = NA,
+      alpha         = 0.8
+    ) +
+    # Jittered dots for patients with cells
+    ggplot2::geom_point(
+      data    = dplyr::filter(pct_data_filled, !is_zero),
+      mapping = ggplot2::aes(color = group),
+      position = ggplot2::position_jitter(width = 0.8, seed = 123),
+      size    = 1,
+      alpha   = 0.8
+    ) +
+    # Zero-cell dots fixed at y = 0
+    ggplot2::geom_point(
+      data    = dplyr::filter(pct_data_filled, is_zero),
+      mapping = ggplot2::aes(color = group),
+      size    = 1.5,
+      alpha   = 0.8
+    ) +
+    ggplot2::facet_wrap(~ cluster, scales = "free_y", nrow = 1) +
+    ggplot2::labs(
+      x = NULL,
+      y = paste0("% of cells per ", dot_col)
+    ) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(
+      strip.text  = ggplot2::element_text(size = 8, face = "bold"),
+      axis.text.x = ggplot2::element_text(size = 6, angle = 45, hjust = 1),
+      panel.spacing = ggplot2::unit(0.5, "lines")
+    )
+  
+  # Apply color scale if provided
+  if (!is.null(colors)) {
+    p <- p +
+      ggplot2::scale_fill_manual(values = colors, guide = "none") +
+      ggplot2::scale_color_manual(values = colors, guide = "none")
+  } else {
+    p <- p +
+      ggplot2::guides(fill = "none", color = "none")
+  }
+  
+  print(p)
+  invisible(pct_data_filled)
+}
+
+
+#' Generate Shades from a Base Color
+#'
+#' Produces \code{n} hex color strings ranging from a lighter to a darker
+#' variant of the supplied base color. Useful for creating within-group shade
+#' palettes to pass to the \code{colors} argument of
+#' \code{\link{dot_box_facet_plot}}.
+#'
+#' @param base_hex \code{character(1)}. A hex color string (e.g.
+#'   \code{"#1379D3"}) used as the base hue.
+#' @param n \code{integer(1)}. Number of shades to generate. Must be >= 1.
+#'
+#' @return A \code{character} vector of length \code{n} containing hex color
+#'   strings, ordered from lighter to darker.
+#'
+#' @examples
+#' # Generate 3 blue shades
+#' make_shades("#1379D3", 3)
+#'
+#' # Build a named palette for use in dot_box_facet_plot()
+#' blue_levels <- c("Chronic Pre-DAA Conserved", "Chronic Post-DAA Conserved")
+#' pink_levels <- c("ACTG Pre-DAA Conserved",    "ACTG Post-DAA Conserved")
+#'
+#' colors <- c(
+#'   setNames(make_shades("#1379D3", length(blue_levels)), blue_levels),
+#'   setNames(make_shades("#C43E96", length(pink_levels)), pink_levels)
+#' )
+#'
+#' @export
+make_shades <- function(base_hex, n) {
+  stopifnot(is.character(base_hex), length(base_hex) == 1, n >= 1)
+  base_rgb <- grDevices::col2rgb(base_hex) / 255
+  lum_seq  <- seq(0.90, 0.45, length.out = n)
+  sapply(lum_seq, function(l) {
+    grDevices::rgb(
+      r = base_rgb[1] + (1 - base_rgb[1]) * (1 - l),
+      g = base_rgb[2] + (1 - base_rgb[2]) * (1 - l),
+      b = base_rgb[3] + (1 - base_rgb[3]) * (1 - l)
+    )
+  })
+}
+
+
+
+#' GSEA Across Groups with Overlaid Enrichment Curves
+#'
+#' Runs Gene Set Enrichment Analysis (GSEA) for a single gene set across all
+#' levels of a grouping variable in a Seurat object, then visualizes the results
+#' as overlaid running enrichment score curves with stacked barcode tracks
+#' rendered below the x-axis. Significant groups are highlighted in color with
+#' adjusted p-value labels; non-significant groups are shown in grey. Barcode
+#' positions and y-axis limits are computed automatically.
+#'
+#' @details
+#' Genes are ranked per group using the signed \eqn{-\log_{10}} adjusted
+#' p-value from \code{FindAllMarkers()}:
+#' \deqn{rank = -\log_{10}(p_{adj}) \times \text{sign}(\text{avg\_log2FC})}
+#' Zero adjusted p-values are replaced with \code{.Machine$double.xmin} before
+#' ranking to avoid \code{Inf} values.
+#'
+#' P-value labels are placed at the peak (or trough for negative NES) of each
+#' significant curve, colored to match the curve. Barcodes are drawn outside
+#' the plot panel, extending the y-axis to include the full barcode stack.
+#'
+#' @param obj A Seurat object. The active identity (\code{Idents(obj)}) is set
+#'   internally to \code{idents} before calling \code{FindAllMarkers()}.
+#' @param signatures \code{character} vector of gene names forming the gene set
+#'   to test.
+#' @param idents \code{character(1)}. Name of the metadata column in
+#'   \code{obj@meta.data} whose unique values define the groups to iterate over
+#'   (e.g. clusters, disease groups, cell types).
+#' @param colors Named \code{character} vector mapping \code{idents} level
+#'   values to hex color strings, or \code{NULL} (default). If \code{NULL},
+#'   colors are assigned automatically using \code{scales::hue_pal()}. Only
+#'   significant groups (below \code{padj_cutoff}) receive color; others are
+#'   drawn in grey. Names must match the values of \code{idents} directly
+#'   (not prefixed).
+#' @param padj_cutoff \code{numeric(1)}. Adjusted p-value threshold below which
+#'   a group is considered significant and drawn in color. Default \code{0.05}.
+#' @param seed \code{integer(1)}. Random seed passed to \code{set.seed()} before
+#'   \code{FindAllMarkers()} and each \code{GSEA()} call for reproducibility.
+#'   Default \code{17}.
+#' @param title \code{character(1)}. Plot title. Defaults to the name of the
+#'   variable passed to \code{signatures}.
+#'
+#' @return Invisibly returns a named \code{list} with two elements:
+#'   \describe{
+#'     \item{\code{gsea_results}}{Named list of \code{gseaResult} objects, one
+#'       per group level.}
+#'     \item{\code{summary_df}}{A \code{data.frame} with columns
+#'       \code{group}, \code{NES}, \code{pvalue}, and \code{p.adjust},
+#'       one row per group with a GSEA result.}
+#'   }
+#'   The enrichment curve plot is printed as a side effect.
+#'
+#' @examples
+#' \dontrun{
+#' # Basic usage — all groups, auto colors
+#' result <- gsea_by_group(
+#'   obj        = seurat_obj,
+#'   signatures = progenitor_genes,
+#'   idents     = "k30_r0.175"
+#' )
+#'
+#' # Access results after plotting
+#' result$summary_df
+#' result$gsea_results[["3"]]
+#'
+#' # Custom colors — names match idents level values directly
+#' cluster_colors <- setNames(
+#'   c("#558BB2", "#9F5C9A", "#F1957D", "#CE0106", "#80350E"),
+#'   unique(obj$k30_r0.175) |> sort() |> as.character()
+#' )
+#'
+#' result <- gsea_by_group(
+#'   obj         = seurat_obj,
+#'   signatures  = progenitor_genes,
+#'   idents      = "k30_r0.175",
+#'   colors      = cluster_colors,
+#'   padj_cutoff = 0.05,
+#'   seed        = 42,
+#'   title       = "Progenitor Gene Set"
+#' )
+#' }
+#'
+#' @seealso
+#' \code{\link[clusterProfiler]{GSEA}},
+#' \code{\link[Seurat]{FindAllMarkers}}
+#'
+#' @importFrom Seurat FindAllMarkers Idents<-
+#' @importFrom clusterProfiler GSEA
+#' @importFrom purrr map_dfr
+#' @importFrom scales hue_pal
+#' @importFrom ggplot2 ggplot aes geom_line geom_segment geom_hline geom_text geom_rect
+#'   scale_color_manual scale_alpha_manual scale_y_continuous coord_cartesian
+#'   theme_classic theme labs margin
+#'
+#' @export
+gsea_by_group <- function(
+    obj,
+    signatures,
+    idents,
+    colors      = NULL,
+    padj_cutoff = 0.05,
+    seed        = 17,
+    title       = NULL
+) {
+  # Capture the variable name of `signatures` before any evaluation
+  if (is.null(title)) title <- deparse(substitute(signatures))
+  
+  # --- Input validation ---
+  stopifnot(
+    inherits(obj, "Seurat"),
+    is.character(signatures), length(signatures) >= 1,
+    is.character(idents), length(idents) == 1,
+    is.numeric(padj_cutoff), padj_cutoff > 0, padj_cutoff <= 1,
+    is.numeric(seed), length(seed) == 1
+  )
+  
+  if (!idents %in% colnames(obj@meta.data)) {
+    stop("'idents' not found in obj@meta.data: ", idents)
+  }
+  
+  # --- Part 1: FindAllMarkers ---
+  Seurat::Idents(obj) <- idents
+  set.seed(seed)
+  all_markers <- Seurat::FindAllMarkers(
+    obj,
+    min.pct         = 0,
+    logfc.threshold = 0,
+    return.thresh   = 1
+  )
+  
+  # Replace zero adjusted p-values to avoid Inf in ranking
+  all_markers$p_val_adj <- ifelse(
+    all_markers$p_val_adj == 0,
+    .Machine$double.xmin,
+    all_markers$p_val_adj
+  )
+  
+  # --- Part 2: GSEA per group ---
+  gene_set <- data.frame(
+    term = "gene_set",
+    gene = signatures
+  )
+  
+  groups <- unique(all_markers$cluster)
+  
+  gsea_results <- lapply(groups, function(gr) {
+    markers_gr   <- all_markers[all_markers$cluster == gr, ]
+    ranks        <- -log10(markers_gr$p_val_adj) * sign(markers_gr$avg_log2FC)
+    names(ranks) <- markers_gr$gene
+    ranks        <- sort(ranks, decreasing = TRUE)
+    
+    set.seed(seed)
+    clusterProfiler::GSEA(
+      geneList     = ranks,
+      TERM2GENE    = gene_set,
+      pvalueCutoff = 1,
+      minGSSize    = 10,
+      eps          = 0
+    )
+  })
+  names(gsea_results) <- groups
+  
+  # --- Summary table ---
+  summary_df <- do.call(rbind, lapply(groups, function(gr) {
+    res <- gsea_results[[gr]]@result
+    if (nrow(res) > 0) {
+      data.frame(
+        group    = gr,
+        NES      = res$NES,
+        pvalue   = res$pvalue,
+        p.adjust = res$p.adjust
+      )
+    }
+  }))
+  
+  # --- Part 3: Build curve_df ---
+  curve_df <- purrr::map_dfr(groups, function(gr) {
+    gsea_obj <- gsea_results[[gr]]
+    if (is.null(gsea_obj) || nrow(gsea_obj@result) == 0) return(NULL)
+    gsdata             <- enrichplot:::gsInfo(gsea_obj, geneSetID = 1)
+    gsdata$group       <- as.character(gr)
+    gsdata$significant <- gsea_obj@result$p.adjust[1] < padj_cutoff
+    gsdata$padj        <- gsea_obj@result$p.adjust[1]
+    gsdata$NES         <- gsea_obj@result$NES[1]
+    gsdata
+  })
+  
+  curve_df$group_id <- as.numeric(factor(curve_df$group))
+  n_groups          <- length(unique(curve_df$group))
+  
+  # --- Smart auto-scaling for barcode positions ---
+  score_min   <- min(curve_df$runningScore, na.rm = TRUE)
+  score_max   <- max(curve_df$runningScore, na.rm = TRUE)
+  score_range <- score_max - score_min
+  
+  # Barcode band sized at 25% of score range, divided evenly across groups
+  spacing <- (score_range * 0.25) / n_groups
+  
+  # Barcodes sit below score_min, inside the panel
+  # A small gap separates the lowest curve from the first barcode track
+  barcode_gap        <- score_range * 0.04
+  curve_df$barcode_y <- (score_min - barcode_gap) - (curve_df$group_id * spacing)
+  
+  # --- Color mapping: raw group values match user-supplied names directly ---
+  curve_df$plot_group <- ifelse(
+    curve_df$significant,
+    as.character(curve_df$group),
+    "NS"
+  )
+  
+  sig_groups <- unique(curve_df$plot_group[curve_df$plot_group != "NS"])
+  
+  if (is.null(colors)) {
+    if (length(sig_groups) == 0) {
+      colors <- setNames(character(0), character(0))
+    } else {
+      colors <- setNames(scales::hue_pal()(length(sig_groups)), sig_groups)
+    }
+  }
+  
+  plot_colors <- c(colors, NS = "grey75")
+  
+  # --- Barcode frame rectangles: one bordered rect per group track ---
+  # Built after plot_group is assigned so NS groups correctly map to grey
+  x_min_data <- min(curve_df$x, na.rm = TRUE)
+  x_max_data <- max(curve_df$x, na.rm = TRUE)
+  
+  rect_df <- do.call(rbind, lapply(unique(curve_df$group), function(gr) {
+    sub   <- curve_df[curve_df$group == gr, ]
+    y_mid <- sub$barcode_y[1]
+    data.frame(
+      xmin       = x_min_data,
+      xmax       = x_max_data,
+      ymin       = y_mid,
+      ymax       = y_mid + spacing * 0.8,
+      rect_group = sub$plot_group[1],   # "NS" or raw group id — matches plot_colors
+      stringsAsFactors = FALSE
+    )
+  }))
+  
+  # --- P-value label positions: peak of each significant curve ---
+  # Column names are deliberately distinct from global aes (x, group) to avoid
+  # ggplot2 inheriting and confusing them across layers.
+  # Label is placed right of peak normally; if peak falls in the right 30% of
+  # the x range, label flips to the left to avoid running off the edge.
+  x_range_min       <- min(curve_df$x, na.rm = TRUE)
+  x_range_max       <- max(curve_df$x, na.rm = TRUE)
+  x_right_threshold <- x_range_min + (x_range_max - x_range_min) * 0.70
+  
+  if (length(sig_groups) == 0) {
+    label_df <- data.frame(
+      label_x     = numeric(0),
+      label_y     = numeric(0),
+      label_txt   = character(0),
+      label_col   = character(0),
+      label_hjust = numeric(0),
+      stringsAsFactors = FALSE
+    )
+  } else {
+    label_df <- do.call(rbind, lapply(sig_groups, function(gr) {
+      sub      <- curve_df[curve_df$group == gr, ]
+      peak_idx <- if (sub$NES[1] >= 0) which.max(sub$runningScore)
+      else which.min(sub$runningScore)
+      peak_x   <- sub$x[peak_idx]
+      hjust_val <- if (peak_x > x_right_threshold) 1.1 else -0.1
+      data.frame(
+        label_x     = peak_x,
+        label_y     = sub$runningScore[peak_idx],
+        label_txt   = paste0("p_adj = ", signif(sub$padj[peak_idx], 2)),
+        label_col   = gr,
+        label_hjust = hjust_val,
+        stringsAsFactors = FALSE
+      )
+    }))
+  }
+  
+  # --- y-axis limits ---
+  # y_bottom extends far enough to contain the full barcode stack + a small pad
+  # This keeps barcodes inside the panel so layout is resize-safe
+  barcode_stack_bottom <- (score_min - barcode_gap) - (n_groups * spacing)
+  y_top    <- score_max * 1.05
+  y_bottom <- barcode_stack_bottom - spacing * 0.5   # half-spacing pad below last track
+  
+  # --- Plot ---
+  p <- ggplot2::ggplot(
+    curve_df,
+    ggplot2::aes(x = x, y = runningScore, group = group)
+  ) +
+    # y = 0 reference line
+    ggplot2::geom_hline(
+      yintercept = 0,
+      linetype   = "dashed",
+      color      = "grey60",
+      linewidth  = 0.4
+    ) +
+    # Enrichment score curves
+    ggplot2::geom_line(
+      ggplot2::aes(color = plot_group, alpha = significant),
+      linewidth = 1
+    ) +
+    # P-value labels at curve peaks, colored to match curve
+    # geom_text has no background so it never obscures the curves beneath
+    # inherit.aes = FALSE prevents the global group/x/y aes from bleeding in
+    {if (nrow(label_df) > 0)
+      ggplot2::geom_text(
+        data        = label_df,
+        inherit.aes = FALSE,
+        ggplot2::aes(x = label_x, y = label_y, label = label_txt,
+                     color = label_col, hjust = label_hjust),
+        size        = 3.5,
+        vjust       = -0.5,
+        fontface    = "bold",
+        show.legend = FALSE
+      )
+      else
+        ggplot2::geom_blank()
+    } +
+    # Framed rectangle per barcode track — drawn before ticks so ticks sit on top
+    ggplot2::geom_rect(
+      data        = rect_df,
+      inherit.aes = FALSE,
+      ggplot2::aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax,
+                   color = rect_group),
+      fill        = "white",
+      linewidth   = 0.3,
+      show.legend = FALSE
+    ) +
+    # Barcode ticks — inside the panel, within the extended y range
+    ggplot2::geom_segment(
+      data = subset(curve_df, position == 1),
+      ggplot2::aes(
+        x     = x,
+        xend  = x,
+        y     = barcode_y,
+        yend  = barcode_y + spacing * 0.8,
+        color = plot_group
+      ),
+      linewidth = 0.3
+    ) +
+    ggplot2::scale_color_manual(values = plot_colors) +
+    ggplot2::scale_alpha_manual(
+      values = c("TRUE" = 1, "FALSE" = 0.4),
+      guide  = "none"
+    ) +
+    ggplot2::scale_y_continuous(
+      # only show breaks in the curve zone, not in the barcode zone below
+      breaks = pretty(c(score_min, score_max), n = 5)
+    ) +
+    ggplot2::coord_cartesian(
+      ylim = c(y_bottom, y_top),
+      clip = "off"
+    ) +
+    ggplot2::theme_classic() +
+    ggplot2::theme(
+      plot.margin = ggplot2::margin(t = 5, r = 5, b = 5, l = 5, unit = "pt")
+    ) +
+    ggplot2::labs(
+      color = "Significance",
+      x     = "Ranked genes",
+      y     = "Enrichment Score",
+      title = title
+    )
+  
+  print(p)
+  invisible(list(gsea_results = gsea_results, summary_df = summary_df))
+}
+
 

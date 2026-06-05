@@ -7,7 +7,7 @@
 heatmap_pseudobulk(
   object,
   features,
-  groups,
+  groups = NULL,
   idents = NULL,
   pseudobulk_column = NULL,
   colors = NULL,
