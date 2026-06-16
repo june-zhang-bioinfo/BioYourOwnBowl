@@ -3415,7 +3415,7 @@ dot_box_facet_plot <- function(
     ggplot2::geom_point(
       data    = dplyr::filter(pct_data_filled, !is_zero),
       mapping = ggplot2::aes(color = group),
-      position = ggplot2::position_jitter(width = 0.8, seed = 123),
+      position = ggplot2::position_jitter(width = 0.3, seed = 123),
       size    = 1,
       alpha   = 0.8
     ) +
@@ -3423,7 +3423,7 @@ dot_box_facet_plot <- function(
     ggplot2::geom_point(
       data    = dplyr::filter(pct_data_filled, is_zero),
       mapping = ggplot2::aes(color = group),
-      size    = 1.5,
+      size    = 1,
       alpha   = 0.8
     ) +
     ggplot2::facet_wrap(~ cluster, scales = "free_y", nrow = 1) +
