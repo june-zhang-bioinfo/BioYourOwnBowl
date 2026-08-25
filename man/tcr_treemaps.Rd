@@ -7,6 +7,10 @@
 tcr_treemaps(
   object,
   top_epitope,
+  epitope_col = "Specificity",
+  clonotype_col = "raw_clonotype_id",
+  participant_col = "participant",
+  time_point_col = NULL,
   min_cells = 20,
   output_dir = ".",
   color_palette = NULL
@@ -17,7 +21,15 @@ tcr_treemaps(
 
 \item{top_epitope}{Character vector of epitopes of interest.}
 
-\item{min_cells}{Integer. Minimum number of cells for a patient-epitope pair to be included. Default is 20.}
+\item{epitope_col}{Character. Name of the metadata column holding epitope/specificity. Default "Specificity".}
+
+\item{clonotype_col}{Character. Name of the metadata column holding clonotype IDs. Default "raw_clonotype_id".}
+
+\item{participant_col}{Character. Name of the metadata column identifying the participant/patient. Default "participant".}
+
+\item{time_point_col}{Character or NULL. Name of the metadata column identifying time point (e.g., "pre"/"on"). If NULL (default), no time-point splitting is done. If supplied, one treemap is generated per participant-epitope-timepoint combination (only for participant-epitope pairs with 2+ qualifying time points), and clonotype colors are kept consistent across time points and participants within each epitope.}
+
+\item{min_cells}{Integer. Minimum number of cells for a group to be included. Default is 20.}
 
 \item{output_dir}{Character. Directory to save treemap PNGs. Defaults to current working directory.}
 
@@ -27,13 +39,18 @@ tcr_treemaps(
 Invisibly returns a list of generated PNG file paths.
 }
 \description{
-This function creates treemaps of TCR clonotypes for each patient and selected epitope,
-highlighting the distribution of clonotypes. Only patients with a minimum number
-of cells per epitope are included.
+This function creates treemaps of TCR clonotypes for each patient (and,
+optionally, each time point) for selected epitopes, highlighting the
+distribution of clonotypes. Only patient-epitope (or patient-epitope-time
+point) groups with a minimum number of cells are included. When
+\code{time_point_col} is supplied, only participant-epitope combinations
+with more than one qualifying time point are plotted, since a single
+time point has nothing to compare against.
 }
 \examples{
 \dontrun{
-tcr_treemaps(object, top_epitope = c("Epitope1", "Epitope2"), min_cells = 20,
-                       output_dir = "treemaps/")
+tcr_treemaps(object, top_epitope = c("Epitope1", "Epitope2"),
+             participant_col = "patient_id", time_point_col = "timepoint",
+             min_cells = 20, output_dir = "treemaps/")
 }
 }

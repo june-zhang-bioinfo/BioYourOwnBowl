@@ -6,6 +6,8 @@
 \usage{
 optimize_single_cell(
   object = NULL,
+  skip_qc = F,
+  dry_run = F,
   normalization.method = "LogNormalize",
   vf.method = "vst",
   model.use = "linear",
@@ -39,7 +41,20 @@ optimize_single_cell(
 \arguments{
 \item{object}{A Seurat object.}
 
-\item{normalization.method}{Method for normalization. Default is "LogNormalize". Please refer to Seurat::NormalizeData() for more options.}
+\item{skip_qc}{Run clustering only.}
+
+\item{dry_run}{Run QC only.}
+
+\item{normalization.method}{Method for normalization. Options: "LogNormalize"
+(standard library-size normalization, the default), "CLR" (centered log-ratio,
+commonly used for protein/ADT data), "RC" (relative counts, no log-transform),
+or "log_tpm" (direct log-transformation of pre-computed TPM values, for
+full-length protocols such as Smart-seq2 where library-size and gene-length
+normalization have already been performed via TPM calculation prior to object
+construction). "LogNormalize", "CLR", and "RC" are passed through
+to Seurat::NormalizeData(); refer to that function for further details. Not
+applied when vf.method = "sct", since SCTransform() performs its own internal
+normalization. Default is "LogNormalize".}
 
 \item{vf.method}{Method for variable feature selection. Options include "vst", "dispersion",
 "pseudobulk", "sct", or "anchor". Default is "vst".}
@@ -111,11 +126,11 @@ The function performs the following steps:
 \enumerate{
 \item Creates output directory and logs parameters and session info
 \item Filters genes by expression threshold
-\item Processes variable features using specified method
+\item Normalizes and processes variable features using the specified methods
 \item Runs PCA and optionally Harmony batch correction
 \item Performs initial clustering at high resolution for QC
 \item Removes low-quality clusters and high mitochondrial content cells
-\item Re-processes variable features after QC
+\item Re-normalizes and re-processes variable features after QC
 \item Selects optimal number of PCs
 \item Runs clustering across multiple k and resolution parameters
 \item Generates comprehensive visualizations including cluster distributions, dotplots, and heatmaps
@@ -127,6 +142,13 @@ The function performs the following steps:
 seurat_obj <- optimize_single_cell(
   object = my_seurat_object,
   out_dir = "results/analysis_v1"
+)
+
+# Smart-seq2 / full-length data with pre-computed TPM
+seurat_obj <- optimize_single_cell(
+  object = my_ss2_seurat_object,
+  normalization.method = "log_tpm",
+  out_dir = "results/ss2_analysis"
 )
 
 # With Harmony batch correction

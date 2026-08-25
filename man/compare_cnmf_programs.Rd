@@ -36,7 +36,7 @@ compare_cnmf_programs(
 A list: overlap_matrix, top_df1, top_df2
 }
 \description{
-This function automatically finds cNMF \emph{gene_spectra_tpm} files inside two
+This function automatically finds cNMF \emph{gene_spectra_score} files inside two
 directories, extracts the top-N genes from each program, optionally filters
 to variable features, and plots an overlap heatmap.
 }

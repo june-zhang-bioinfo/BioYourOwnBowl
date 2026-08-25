@@ -11,7 +11,7 @@
 #' @return A Seurat object containing only the genes that meet the expression threshold.
 #' @export
 filter_genes_by_expression <- function(object, gene_filter = 50, assay = "RNA") {
-  
+
   # Get raw counts
   # gene_expression_matrix <- object@assays[[assay]]$counts
   gene_expression_matrix <- Seurat::GetAssayData(object, assay = assay, layer = "counts")
@@ -24,9 +24,9 @@ filter_genes_by_expression <- function(object, gene_filter = 50, assay = "RNA") 
 
   # Subset object to keep only selected genes
   object <- subset(object, features = genes_to_keep)
-  
+
   message("Gene filtering done.")
-  
+
   return(object)
 }
 
@@ -52,10 +52,10 @@ filter_genes_by_expression <- function(object, gene_filter = 50, assay = "RNA") 
 #'
 #' @export
 anchor_features <- function(object, split.by = "Patient", nfeatures = 2000, selection.method = "vst"){
-  
+
   object <- NormalizeData(object)
   patient.list <- SplitObject(object, split.by = split.by)
-  
+
   for (i in 1:length(patient.list)) {
     patient.list[[i]] <- NormalizeData(patient.list[[i]], verbose = FALSE)
     patient.list[[i]] <- FindVariableFeatures(patient.list[[i]], selection.method = selection.method, nfeatures = 2000, verbose = FALSE)
@@ -63,18 +63,24 @@ anchor_features <- function(object, split.by = "Patient", nfeatures = 2000, sele
   patient.list <- patient.list[sapply(patient.list, function(x) ncol(x) > 30)]
   anchors <- FindIntegrationAnchors(object.list = patient.list, anchor.features = nfeatures)
   VariableFeatures(object) <- anchors@anchor.features
-  
+
   message("Define Variable Features by anchor features done.")
-  
+
   return(object)
 }
 
 #' Preprocess Seurat Object.
 #'
-#' This function normalizes, selects variable features, and scales a Seurat object.
-#' based on the chosen variable feature method and scaling method.
+#' This function normalizes, selects variable features, and scales a Seurat object,
+#' based on the chosen normalization method, variable feature method, and scaling method.
 #'
 #' @param object A Seurat object.
+#' @param normalization.method Character. Method used to normalize expression data.
+#'   Options: "LogNormalize" (standard Seurat library-size normalization, suitable
+#'   for UMI-based/droplet data), "CLR", "RC", or "log_tpm" (direct log-transformation of
+#'   pre-computed TPM values, appropriate for full-length protocols such as
+#'   Smart-seq2, where library-size normalization has already been performed via
+#'   TPM calculation prior to object construction). Default is "LogNormalize".
 #' @param vf.method Character. Method for variable feature selection. Options: "vst", "dispersion", "mean.var.plot", "pseudobulk", "sct", "anchor".
 #' @param nfeatures Integer. Number of variable features to select. Default is 2000.
 #' @param regress.out Character vector. Variables to regress out during scaling. Default is NULL.
@@ -82,52 +88,59 @@ anchor_features <- function(object, split.by = "Patient", nfeatures = 2000, sele
 #' @param pseudobulk_var Character. Identity variable to use for pseudobulk aggregation. Required if vf.method = "pseudobulk".
 #' @param pseudo_cutoff Numeric. Minimum cells per identity to include in pseudobulk. Default is 30.
 #'
-#' @return A Seurat object processed according to the chosen variable feature method.
+#' @return A Seurat object processed according to the chosen normalization and
+#'   variable feature methods.
 #' @export
 preprocess_obj <- function(object,
-                                      vf.method = "vst",
-                                      nfeatures = 2000,
-                                      regress.out = NULL,
-                                      model.use = "linear",
-                                      pseudobulk_var = NULL,
-                                      pseudo_cutoff = 30) {
+                           normalization.method = "LogNormalize",
+                           vf.method = "vst",
+                           nfeatures = 2000,
+                           regress.out = NULL,
+                           model.use = "linear",
+                           pseudobulk_var = NULL,
+                           pseudo_cutoff = 30) {
+
+  # --- Helper: apply the chosen normalization to a given Seurat object ---
+  normalize_obj <- function(obj) {
+    if (normalization.method == "log_tpm") {
+      log_tpm <- as.sparse(log(obj[["RNA"]]$counts + 1))
+      obj[["RNA"]]$data <- log_tpm
+      obj
+    } else {
+      NormalizeData(obj, normalization.method = normalization.method)
+    }
+  }
 
   if(vf.method %in% c("vst", "dispersion", "mean.var.plot")) {
-    object <- NormalizeData(object)
+    object <- normalize_obj(object)
     object <- FindVariableFeatures(object, selection.method = vf.method, nfeatures = nfeatures)
     object <- ScaleData(object, vars.to.regress = regress.out, model.use = model.use)
-
   } else if(vf.method == "pseudobulk") {
     if(is.null(pseudobulk_var)) stop("'pseudobulk_var' must be provided for vf.method = 'pseudobulk'")
-    
+
     Idents(object) <- pseudobulk_var
     ident_counts <- table(Idents(object))
     valid_idents <- names(ident_counts[ident_counts > pseudo_cutoff])
-    
+
     if (length(valid_idents) == 0) {
       stop("No identities have more than ", pseudo_cutoff, " cells. ",
            "Try lowering pseudo_cutoff or use a different vf.method.")
     }
     obj2 <- subset(object, idents = valid_idents)
-
     avg_expr <- AverageExpression(obj2, assays = "RNA", layer = "counts", return.seurat = TRUE)
-    avg_expr <- NormalizeData(avg_expr)
+    avg_expr <- normalize_obj(avg_expr)
     avg_expr <- FindVariableFeatures(avg_expr, selection.method = "dispersion", nfeatures = nfeatures)
-
-    object <- NormalizeData(object)
+    object <- normalize_obj(object)
     VariableFeatures(object) <- VariableFeatures(avg_expr)
     object <- ScaleData(object, model.use = model.use)
-
   } else if(vf.method == "sct") {
     object <- SCTransform(object, variable.features.n = nfeatures, vars.to.regress = regress.out)
-
   } else {
     object <- anchor_features(object, nfeatures = nfeatures)
     object <- ScaleData(object, vars.to.regress = regress.out, model.use = model.use)
   }
-  
-  message("Preprocess object done.")
 
+  message("Preprocess object done.")
   return(object)
 }
 
@@ -153,17 +166,17 @@ select_PCs <- function(object, improved_diff_quantile = 0.6){
   eigValues <- (object@reductions$pca@stdev)^2
   varExplained <- eigValues / sum(eigValues)
   dims <- 1:(floor(max(which(diff(varExplained) < quantile(diff(varExplained), 1-improved_diff_quantile)) + 1)))
-  
+
   p <- ElbowPlot(object, ndims=ncol(object@reductions$pca@cell.embeddings)) +
     geom_vline(xintercept = length(dims), color="red")
-  
+
   png("elbow.png")
   print(p)
   dev.off()
   message(paste0("Elbow plot saved to ", getwd(), "/elbow.png"))
-  
+
   print(p)
-  
+
   return(dims)
 }
 
@@ -193,7 +206,7 @@ select_PCs <- function(object, improved_diff_quantile = 0.6){
 #' gene_stats <- plot_mean_variance(seurat_obj, selected_genes, file_name = "my_analysis")
 #' }
 #' @export
-plot_mean_variance <- function(object, features = NULL, 
+plot_mean_variance <- function(object, features = NULL,
                                file_name = "Mean-variance") {
   # Compute mean and variance
   counts <- GetAssayData(object, assay = "RNA", layer = "counts")
@@ -238,7 +251,7 @@ plot_mean_variance <- function(object, features = NULL,
     png(filename, width = 1600, height = 1600, res = 200)
     print(p)
     dev.off()
-    
+
     return(p)
   }
 
@@ -255,12 +268,12 @@ plot_mean_variance <- function(object, features = NULL,
     # Check which features exist
     existing_features <- intersect(features, rownames(counts))
     missing_features <- setdiff(features, rownames(counts))
-    
+
     if (length(missing_features) > 0) {
       warning("The following selected features were not found in the object: ",
               paste(missing_features, collapse = ", "))
     }
-    
+
     if (length(existing_features) == 0) {
       warning("None of the selected features were found in the object. Skipping selected feature plots.")
     } else {
@@ -272,7 +285,7 @@ plot_mean_variance <- function(object, features = NULL,
       )
       # 3. Intersection
       overlap_genes <- intersect(VariableFeatures(object), existing_features)
-      
+
       if (length(overlap_genes) > 0) {
         make_plot(
           gene_stats = gene_stats,
@@ -286,7 +299,7 @@ plot_mean_variance <- function(object, features = NULL,
       }
     }
   }
-  
+
   message("Plot Mean-Variance done.")
 
   invisible(gene_stats)
@@ -343,9 +356,9 @@ export_top_pc_genes <- function(object,
 #' by ranking either statistical significance (`p_val_adj`) or
 #' effect size (`avg_log2FC`). It can take results from both `FindAllMarkers` (> 2 groups) and `FindMarkers` (2 groups).
 
-#' 
+#'
 #' If using results from `FindMarkers`, `direction` doesn't take effect. Please make sure you add `cluster` column indicating the group name in the input.
-#' 
+#'
 #' @param markers A data frame or tibble containing marker gene statistics.
 #'   Must include the following columns:
 #'   \describe{
@@ -373,14 +386,14 @@ select_marker_genes_rank <- function(markers,
                                      rank_by = "p_val_adj",
                                      adj_p_cutoff = 0.05,
                                      log2fc_cutoff = 0) {
-  
+
   # Avoid zero p-values
   markers$p_val_adj <- ifelse(
     markers$p_val_adj == 0,
     .Machine$double.xmin,
     markers$p_val_adj
   )
-  
+
   # Filtering (same logic as your original function)
   if (length(unique(markers$cluster)) > 2) {
     if (direction == "up") {
@@ -400,7 +413,7 @@ select_marker_genes_rank <- function(markers,
     features <- markers %>%
       dplyr::filter(p_val_adj <= adj_p_cutoff)
   }
-  
+
   # Ranking
   if (rank_by == "p_val_adj") {
     top_features <- features %>%
@@ -420,7 +433,7 @@ select_marker_genes_rank <- function(markers,
         dplyr::slice_head(n = top_n)
     }
   }
-  
+
   top_features %>%
     dplyr::ungroup() %>%
     dplyr::distinct(gene, cluster, .keep_all = TRUE) %>%
@@ -506,7 +519,7 @@ select_marker_genes_score <- function(markers,
                                       log2fc_cutoff = 0) {
   markers$p_val_adj <- ifelse(markers$p_val_adj == 0, .Machine$double.xmin, markers$p_val_adj)
   markers$score <- (-log10(markers$p_val_adj)) * abs(markers$avg_log2FC)
-  
+
   if(length(unique(markers$cluster)) > 2){
     if (direction == "up") {
       features <- markers %>%
@@ -522,7 +535,7 @@ select_marker_genes_score <- function(markers,
     features <- markers %>%
       filter(p_val_adj <= adj_p_cutoff)
   }
-  
+
   if (is.null(top_n)) {
     features %>%
       group_by(cluster) %>%
@@ -574,11 +587,11 @@ dotplots_png <- function(
   if (!idents %in% colnames(object@meta.data)) {
     stop("`idents` must be a column in meta data.")
   }
-  
+
   Idents(object) <- idents
   groups <- unique(object[[idents]] %>% unlist() %>% as.character())
   features <- unique(features)
-  
+
   p <- DotPlot(object, features = features) +
     RotatedAxis() +
     scale_colour_gradient2(low = low_color, mid = mid_color, high = high_color)
@@ -591,7 +604,7 @@ dotplots_png <- function(
   )
   print(p)
   dev.off()
-  
+
   return(p)
 }
 
@@ -622,23 +635,23 @@ dotplots_png <- function(
 #' }
 #' @export
 dotplots_pdf <- function(object, features, file_name = "dotplot.pdf") {
-  
+
   if (!inherits(object, "Seurat"))
     stop("object must be a Seurat object")
-  
+
   if (!is.list(features) || length(features) == 0)
     stop("features must be a non-empty list of character vectors")
-  
+
   # Check that all list elements are character vectors
   if (!all(sapply(features, is.character)))
     stop("All elements in features list must be character vectors")
-  
+
   pdf(
     file_name,
     width = length(unique(Idents(object))) * 5.7,
     height = length(unique(Idents(object))) * 0.6
   )
-  
+
   # Loop through each element in the features list
   for (i in seq_along(features)) {
     print(
@@ -647,7 +660,7 @@ dotplots_pdf <- function(object, features, file_name = "dotplot.pdf") {
         scale_colour_gradient2(low = "#0024d6", mid = "#b4b6bf", high = "#d91111")
     )
   }
-  
+
   dev.off()
 }
 
@@ -702,13 +715,25 @@ remove_low_quality_clusters <- function(object,
       scale_fill_manual(values = cluster_colors) +
       ggtitle("Clusters flagged for removal (in red)")
   )
-  
+
+  # print(
+  #   RidgePlot(object, features = "raw_nCount_RNA_all") +
+  #     scale_fill_manual(values = cluster_colors) +
+  #     ggtitle("raw nCount_RNA all")
+  # )
+
+  # print(
+  #   RidgePlot(object, features = "raw_nCount_RNA_list") +
+  #     scale_fill_manual(values = cluster_colors) +
+  #     ggtitle("raw nCount_RNA list")
+  # )
+
   print(
-    RidgePlot(object, features = "nCount_RNA") +
+    RidgePlot(object, features = "percent.mt") +
       scale_fill_manual(values = cluster_colors) +
-      ggtitle("raw nCount_RNA")
+      ggtitle("percent.mt")
   )
-  
+
   # grid.newpage()
   # grid.draw(grid.text(
   #   cluster_stats$nFeature_RNA,
@@ -717,7 +742,7 @@ remove_low_quality_clusters <- function(object,
 
   # --- Subset Seurat object ---
   object <- subset(object, seurat_clusters %in% low_quality_clusters, invert = TRUE)
-  
+
   return(object)
 }
 
@@ -854,7 +879,7 @@ clustering <- function(
 #' @param cluster_columns Logical. Whether to cluster columns (cells) in the heatmap (default = FALSE).
 #' @param cluster_groups Logical. If \code{TRUE}, orders cluster splits by hierarchical clustering
 #'   on their mean expression profiles (default = FALSE).
-#' @param show_legend Logical.Whether to show cluster legend. 
+#' @param show_legend Logical.Whether to show cluster legend.
 #' @param group_order Character vector. Manual ordering of cluster levels. Overrides
 #'   \code{cluster_groups} if both are specified (default = NULL).
 #' @param downsample Logical or numeric. If \code{TRUE}, downsamples to the smallest group size.
@@ -862,6 +887,7 @@ clustering <- function(
 #' @param file_name Character. File name for the saved heatmap PNG.
 #'   If \code{NULL}, the plot is not saved (default = NULL).
 #' @param zlim Numeric vector of length 2 specifying limits for Z-score color scale (default = c(-2, 2)).
+#' @param color_palette Character vector of length 3 specifying colors for (min, center, max) of the gene expression color scale, matching the convention used in heatmap_pseudobulk() and heatmap_group_level(). Default is c("#4575b4", "white", "#d73027").
 #' @param width Numeric. Width of the output PNG in inches (default = 6).
 #' @param height Numeric. Height of the output PNG in inches (default = NULL, auto-calculated).
 #' @param fontsize Numeric. Font size of row/column gene name labels (default = 3).
@@ -896,6 +922,7 @@ heatmap_cell_level <- function(object,
                                downsample = FALSE,
                                file_name = NULL,
                                zlim = c(-2, 2),
+                               color_palette = c("#4575b4", "white", "#d73027"),
                                width = 6,
                                height = NULL,
                                fontsize = 3,
@@ -906,27 +933,27 @@ heatmap_cell_level <- function(object,
                                protein_zlim = c(-2, 2),
                                scale_protein = TRUE,
                                res = 300) {
-  
+
   meta <- object@meta.data
   meta[[idents]] <- factor(meta[[idents]], levels = sort(unique(meta[[idents]])))
-  
+
   if (inherits(features, "character")) {
     genes_to_plot <- features
   } else {
     genes_to_plot <- features$gene
   }
-  
+
   obj_hm <- Seurat::ScaleData(object, features = genes_to_plot)
   mat <- Seurat::GetAssayData(obj_hm, layer = "scale.data")
   mat <- mat[intersect(genes_to_plot, rownames(mat)), ]
   mat <- mat[, rownames(meta)]
   mat <- mat[rowSums(mat != 0) > 0, ]
-  
+
   # Downsampling logic
   if (downsample != FALSE) {
     group_ids <- meta[[idents]]
     group_sizes <- table(group_ids)
-    
+
     if (is.logical(downsample) && downsample == TRUE) {
       target_n <- min(group_sizes)
       message("Downsampling each group to ", target_n, " cells (smallest group size)")
@@ -934,7 +961,7 @@ heatmap_cell_level <- function(object,
       target_n <- downsample
       message("Downsampling each group to ", target_n, " cells")
     }
-    
+
     set.seed(123)
     sampled_cells <- unlist(lapply(levels(group_ids), function(grp) {
       cells_in_group <- rownames(meta)[group_ids == grp]
@@ -944,38 +971,38 @@ heatmap_cell_level <- function(object,
         return(sample(cells_in_group, target_n))
       }
     }))
-    
+
     mat  <- mat[, sampled_cells]
     meta <- meta[sampled_cells, ]
   }
-  
+
   # --- Build protein matrix ---
   p_prot <- NULL
   if (!is.null(protein_features)) {
-    
+
     # Fetch ALL available protein data independently from the full object
     all_prot_df <- Seurat::FetchData(object, vars = protein_features)
-    
+
     # Determine how many cells are needed per group (mirrors gene matrix group sizes)
     target_n_prot <- if (downsample != FALSE) target_n else NULL
-    
+
     # For each group, determine n_needed (same count as gene matrix for that group)
     group_n_needed <- sapply(levels(meta[[idents]]), function(grp) {
       if (is.null(target_n_prot)) sum(meta[[idents]] == grp) else target_n_prot
     })
-    
+
     # Per-group: prioritise cells with the most proteins available (coverage-based)
     prot_cells_ordered <- unlist(lapply(levels(meta[[idents]]), function(grp) {
       all_grp_cells <- rownames(object@meta.data)[object@meta.data[[idents]] == grp]
       n_needed      <- group_n_needed[[grp]]
-      
+
       # Score each cell by how many proteins it has data for
       grp_cells_with_prot <- intersect(all_grp_cells, rownames(all_prot_df))
       protein_coverage    <- rowSums(!is.na(all_prot_df[grp_cells_with_prot, , drop = FALSE]))
       # Sort descending so highest-coverage cells are preferred
       covered_cells <- names(sort(protein_coverage, decreasing = TRUE))
       lacking_cells <- setdiff(all_grp_cells, rownames(all_prot_df))
-      
+
       set.seed(123)
       if (length(covered_cells) >= n_needed) {
         sample(covered_cells[seq_len(n_needed)])  # sample within top-n to avoid positional bias
@@ -985,7 +1012,7 @@ heatmap_cell_level <- function(object,
           if (length(lacking_cells) > 0) sample(lacking_cells, min(n_pad, length(lacking_cells))) else character(0))
       }
     }))
-    
+
     # Build prot_df aligned to prot_cells_ordered; per-cell per-protein NAs preserved naturally
     prot_df <- all_prot_df[intersect(prot_cells_ordered, rownames(all_prot_df)), , drop = FALSE]
     missing_cells <- setdiff(prot_cells_ordered, rownames(all_prot_df))
@@ -995,7 +1022,7 @@ heatmap_cell_level <- function(object,
       prot_df <- rbind(prot_df, as.data.frame(na_rows))
     }
     prot_df <- prot_df[prot_cells_ordered, , drop = FALSE]
-    
+
     # Reorder within each group: most protein coverage first, NAs sink to bottom
     prot_idents_tmp <- factor(object@meta.data[prot_cells_ordered, idents],
                               levels = levels(meta[[idents]]))
@@ -1007,7 +1034,7 @@ heatmap_cell_level <- function(object,
     prot_df     <- prot_df[prot_cells_ordered, , drop = FALSE]
     prot_idents <- factor(object@meta.data[prot_cells_ordered, idents],
                           levels = levels(meta[[idents]]))
-    
+
     # shuffle available value
     set.seed(123)
     prot_cells_ordered <- unlist(lapply(levels(prot_idents), function(grp) {
@@ -1021,37 +1048,37 @@ heatmap_cell_level <- function(object,
     prot_df     <- prot_df[prot_cells_ordered, , drop = FALSE]
     prot_idents <- factor(object@meta.data[prot_cells_ordered, idents],
                           levels = levels(meta[[idents]]))
-    
+
     n_na         <- sum(is.na(prot_df))
     n_cells_prot <- nrow(prot_df)
     message(n_cells_prot, " cells in protein matrix (vs ", ncol(mat), " cells in gene matrix).")
     if (n_na > 0) message(n_na, " NA values will be shown in grey.")
-    
-    
+
+
     prot <- t(as.matrix(prot_df))
-    
+
     if (scale_protein) {
       prot <- t(scale(t(prot), center = TRUE, scale = TRUE))
       prot <- pmin(pmax(prot, protein_zlim[1]), protein_zlim[2])
       message("Protein data z-scored across cells.")
     }
   }
-  
+
   if (is.null(height)) {
     n_genes <- nrow(mat)
     height  <- 8 + (n_genes - 120) * (2 / 50)
     height  <- max(height, 6)
     message("Automatically calculated height: ", round(height, 2), " inches for ", n_genes, " genes")
   }
-  
+
   group_colors <- colors[1:length(unique(meta[[idents]]))]
   names(group_colors) <- unique(meta[[idents]])
-  
+
   col_fun <- circlize::colorRamp2(
     breaks = c(zlim[1], 0, zlim[2]),
-    colors = c("blue", "white", "red")
+    colors = color_palette
   )
-  
+
   # --- Cluster groups by mean expression similarity ---
   if (cluster_groups && split_by_cluster) {
     if (!is.null(group_order)) {
@@ -1068,7 +1095,7 @@ heatmap_cell_level <- function(object,
       group_colors   <- group_colors[ordered_levels]
     }
   }
-  
+
   # --- Manual group order ---
   if (!is.null(group_order)) {
     missing_groups <- setdiff(group_order, levels(meta[[idents]]))
@@ -1078,34 +1105,37 @@ heatmap_cell_level <- function(object,
     meta[[idents]] <- factor(meta[[idents]], levels = group_order)
     group_colors   <- group_colors[group_order]
   }
-  
+
   prot_col_fun <- circlize::colorRamp2(
     breaks = c(protein_zlim[1], 0, protein_zlim[2]),
     colors = c("#4ab340", "white", "orange")
   )
-  
+
   # --- Build fontface vector for bold/italic gene labels ---
   base_font <- ifelse(italic_genes, "italic", "plain")
   bold_font <- ifelse(italic_genes, "bold.italic", "bold")
-  
+
   if (!is.null(bold_genes)) {
     gene_fontface <- ifelse(rownames(mat) %in% bold_genes, bold_font, base_font)
   } else {
     gene_fontface <- base_font
   }
-  
+
   # --- Transpose block ---
   if (transpose) {
     mat <- t(mat)
     meta[[idents]] <- factor(meta[[idents]], levels = rev(levels(meta[[idents]])))
-    
+
+    identity_anno_list   <- setNames(list(meta[[idents]]), idents)
+    identity_anno_colors <- setNames(list(group_colors), idents)
+
     row_anno <- ComplexHeatmap::rowAnnotation(
-      Cluster = meta[[idents]],
-      col = list(Cluster = group_colors),
+      df  = identity_anno_list,
+      col = identity_anno_colors,
       annotation_name_side = "top",
       show_legend = show_legend
     )
-    
+
     p <- ComplexHeatmap::Heatmap(
       mat,
       name = "Expression",
@@ -1114,13 +1144,14 @@ heatmap_cell_level <- function(object,
       cluster_rows = cluster_columns,
       cluster_columns = cluster_rows,
       row_split = if (split_by_cluster) meta[[idents]] else NULL,
+      row_title_rot = 0,
       show_row_names = FALSE,
       show_column_names = TRUE,
       column_names_gp = grid::gpar(fontsize = fontsize, fontface = gene_fontface),
       column_title = "Genes",
       heatmap_legend_param = list(title = "Gene\nZ-score")
     )
-    
+
     if (!is.null(protein_features)) {
       p_prot <- ComplexHeatmap::Heatmap(
         t(prot),
@@ -1139,15 +1170,18 @@ heatmap_cell_level <- function(object,
       )
       p <- p + p_prot
     }
-    
+
   } else {
+    identity_anno_list   <- setNames(list(meta[[idents]]), idents)
+    identity_anno_colors <- setNames(list(group_colors), idents)
+
     col_anno <- ComplexHeatmap::HeatmapAnnotation(
-      Cluster = meta[[idents]],
-      col = list(Cluster = group_colors),
+      df  = identity_anno_list,
+      col = identity_anno_colors,
       annotation_name_side = "left",
       show_legend = show_legend
     )
-    
+
     p <- ComplexHeatmap::Heatmap(
       mat,
       name = "Expression",
@@ -1162,7 +1196,7 @@ heatmap_cell_level <- function(object,
       row_names_gp = grid::gpar(fontsize = fontsize, fontface = gene_fontface),
       heatmap_legend_param = list(title = "Z-score")
     )
-    
+
     if (!is.null(protein_features)) {
       p_prot <- ComplexHeatmap::Heatmap(
         prot,
@@ -1182,9 +1216,10 @@ heatmap_cell_level <- function(object,
       p <- p %v% p_prot
     }
   }
-  
+
   if (!is.null(file_name)) {
     png(file_name, width = width, height = height, units = "in", res = res)
+    # svg(file_name, width = width, height = height, bg = "white")
     ComplexHeatmap::draw(p)
     dev.off()
     message("Heatmap saved to ", file_name)
@@ -1197,7 +1232,7 @@ heatmap_cell_level <- function(object,
     print("NAs in protein matrix:")
     print(na_summary)
   }
-  
+
   return(p)
 }
 
@@ -1260,17 +1295,17 @@ heatmap_cell_level <- function(object,
 #'
 #' @export
 stacked_bar_plots <- function(object,
-                                      idents,
-                                      layers,
-                                      layer_orders = list(),
-                                      colors,
-                                      percentage_by = NULL,
-                                      title = NULL,
-                                      show_counts = FALSE,
-                                      count_size = 3,
-                                      count_color = "black",
-                                      count_vjust = -0.5,
-                                      .color_map = NULL) {
+                              idents,
+                              layers,
+                              layer_orders = list(),
+                              colors,
+                              percentage_by = NULL,
+                              title = NULL,
+                              show_counts = FALSE,
+                              count_size = 3,
+                              count_color = "black",
+                              count_vjust = -0.5,
+                              .color_map = NULL) {
 
   # --- Input validation ---
   if (!inherits(object, "Seurat")) {
@@ -1422,7 +1457,7 @@ stacked_bar_plots <- function(object,
     ggplot2::labs(
       x = layers[1],
       y = "Percentage (%)",
-      fill = "Cluster",
+      fill = "Group",
       title = title
     ) +
     ggplot2::theme(
@@ -1454,10 +1489,17 @@ stacked_bar_plots <- function(object,
   }
 
   # Add facets if two layers
+  # facet_grid with space = "free_x" scales each panel's width in proportion
+  # to the number of x-axis categories it contains, so panels with fewer bars
+  # don't stretch to match panels with more bars.
   if (length(layers) == 2) {
-    p <- p + ggplot2::facet_wrap(as.formula(paste("~", layers[2])), scales = "free_x", nrow = 1)
+    p <- p + ggplot2::facet_grid(
+      cols = ggplot2::vars(!!rlang::sym(layers[2])),
+      scales = "free_x",
+      space = "free_x"
+    )
   }
-  
+
   # print(p)
   return(p)
 }
@@ -1539,8 +1581,12 @@ combine_stacked_bars <- function(plot_list, layer_order = NULL) {
   # Calculate dynamic widths based on number of bars in each subplot
   widths <- sapply(plot_list, function(p) {
     plot_data <- ggplot2::ggplot_build(p)$data[[1]]
-    if (!is.null(plot_data)) {
-      n_bars <- sum(near(plot_data$y, 100, tol = 0.001), na.rm = TRUE)
+    if (!is.null(plot_data) && nrow(plot_data) > 0) {
+      if ("PANEL" %in% colnames(plot_data)) {
+        n_bars <- nrow(unique(plot_data[, c("x", "PANEL")]))
+      } else {
+        n_bars <- length(unique(plot_data$x))
+      }
       return(max(n_bars, 1))
     } else {
       return(1)
@@ -1568,7 +1614,18 @@ combine_stacked_bars <- function(plot_list, layer_order = NULL) {
 #' QC and analysis plots.
 #'
 #' @param object A Seurat object.
-#' @param normalization.method Method for normalization. Default is "LogNormalize". Please refer to Seurat::NormalizeData() for more options.
+#' @param skip_qc Run clustering only.
+#' @param dry_run Run QC only.
+#' @param normalization.method Method for normalization. Options: "LogNormalize"
+#'   (standard library-size normalization, the default), "CLR" (centered log-ratio,
+#'   commonly used for protein/ADT data), "RC" (relative counts, no log-transform),
+#'   or "log_tpm" (direct log-transformation of pre-computed TPM values, for
+#'   full-length protocols such as Smart-seq2 where library-size and gene-length
+#'   normalization have already been performed via TPM calculation prior to object
+#'   construction). "LogNormalize", "CLR", and "RC" are passed through
+#'   to Seurat::NormalizeData(); refer to that function for further details. Not
+#'   applied when vf.method = "sct", since SCTransform() performs its own internal
+#'   normalization. Default is "LogNormalize".
 #' @param vf.method Method for variable feature selection. Options include "vst", "dispersion",
 #'   "pseudobulk", "sct", or "anchor". Default is "vst".
 #' @param model.use Model to use for scaling. Default is "linear". Please refer to Seurat::ScaleData() for more options.
@@ -1606,11 +1663,11 @@ combine_stacked_bars <- function(plot_list, layer_order = NULL) {
 #' \enumerate{
 #'   \item Creates output directory and logs parameters and session info
 #'   \item Filters genes by expression threshold
-#'   \item Processes variable features using specified method
+#'   \item Normalizes and processes variable features using the specified methods
 #'   \item Runs PCA and optionally Harmony batch correction
 #'   \item Performs initial clustering at high resolution for QC
 #'   \item Removes low-quality clusters and high mitochondrial content cells
-#'   \item Re-processes variable features after QC
+#'   \item Re-normalizes and re-processes variable features after QC
 #'   \item Selects optimal number of PCs
 #'   \item Runs clustering across multiple k and resolution parameters
 #'   \item Generates comprehensive visualizations including cluster distributions, dotplots, and heatmaps
@@ -1624,6 +1681,13 @@ combine_stacked_bars <- function(plot_list, layer_order = NULL) {
 #' seurat_obj <- optimize_single_cell(
 #'   object = my_seurat_object,
 #'   out_dir = "results/analysis_v1"
+#' )
+#'
+#' # Smart-seq2 / full-length data with pre-computed TPM
+#' seurat_obj <- optimize_single_cell(
+#'   object = my_ss2_seurat_object,
+#'   normalization.method = "log_tpm",
+#'   out_dir = "results/ss2_analysis"
 #' )
 #'
 #' # With Harmony batch correction
@@ -1645,6 +1709,8 @@ combine_stacked_bars <- function(plot_list, layer_order = NULL) {
 #' )
 #' }
 optimize_single_cell <- function(object = NULL,
+                                 skip_qc = F,
+                                 dry_run = F,
                                  normalization.method = "LogNormalize",
                                  vf.method = "vst",
                                  model.use = "linear",
@@ -1666,7 +1732,7 @@ optimize_single_cell <- function(object = NULL,
                                  clusters_min = 4,
                                  clusters_max = 13,
                                  min.pct = 0.3,
-                                 log2fc_cutoff = log2(1.5), 
+                                 log2fc_cutoff = log2(1.5),
                                  lower_bound_param = 1,
                                  higher_bound_param = 2,
                                  cluster_distribution_layers = NULL,
@@ -1699,7 +1765,7 @@ optimize_single_cell <- function(object = NULL,
 
   # Remove any empty/NULL entries
   all_params <- all_params[!sapply(all_params, is.null)]
-  
+
   safe_params <- all_params[sapply(all_params, function(x) {
     is.atomic(x) || is.list(x) || is.character(x) || is.numeric(x) || is.logical(x)
   })]
@@ -1711,7 +1777,7 @@ optimize_single_cell <- function(object = NULL,
     paste0("params_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".yaml")
   )
   yaml::write_yaml(safe_params, param_file)
-  
+
   # --- Continue with your function code ---
   message("parameters saved to ", param_file)
 
@@ -1721,63 +1787,73 @@ optimize_single_cell <- function(object = NULL,
   sink()
   message("Session info saved to ", session_file)
 
-  pdf("qc.pdf")
+  if (!skip_qc) {
+    pdf("qc.pdf")
 
-  n1 <- dim(object)[1]
-  object <- filter_genes_by_expression(object, gene_filter = gene_filter, assay = "RNA")
-  n2 <- dim(object)[1]
-  object <- preprocess_obj(object,
-                                      vf.method = vf.method,
-                                      nfeatures = nfeatures,
-                                      regress.out = regress.out,
-                                      model.use = model.use,
-                                      pseudobulk_var = pseudobulk_var,
-                                      pseudo_cutoff = pseudo_cutoff)
-  object <- RunPCA(object, npcs = 30, verbose = F)
-  if(harmony == T){
-    object <- RunHarmony(object, group.by.vars = harmony_vars)
-    reduction <- "harmony"
+    n1 <- dim(object)[1]
+    object <- filter_genes_by_expression(object, gene_filter = gene_filter, assay = "RNA")
+    n2 <- dim(object)[1]
+    object <- preprocess_obj(object,
+                             normalization.method = normalization.method,
+                             vf.method = vf.method,
+                             nfeatures = nfeatures,
+                             regress.out = regress.out,
+                             model.use = model.use,
+                             pseudobulk_var = pseudobulk_var,
+                             pseudo_cutoff = pseudo_cutoff)
+    object <- RunPCA(object, npcs = 30, verbose = F)
+    if(harmony == T){
+      object <- RunHarmony(object, group.by.vars = harmony_vars)
+      reduction <- "harmony"
+    }
+    object <- RunUMAP(object, reduction = reduction, dims = 1:30, seed.use = seed)
+    object <- FindNeighbors(object, dims = 1:30)
+    object <- FindClusters(object, resolution = 2)
+    object$qc_cluster <- object$seurat_clusters
+
+    print(DimPlot(object, label = TRUE, label.box = TRUE))
+    print(FeaturePlot(object, features = "percent.mt"))
+    # print(FeaturePlot(object, features = "nCount_RNA"))
+
+    n4 <- dim(object)[2]
+    object <- remove_low_quality_clusters(object,
+                                          lower_bound_param = lower_bound_param,
+                                          higher_bound_param = higher_bound_param)
+
+    object <- subset(object, percent.mt < mt.cutoff)
+
+    n5 <- dim(object)[2]
+    grid.newpage()
+    grid.draw(grid.text(
+      paste0("Cells before QC:", n4, "\n",
+             "Cells after QC:", n5),
+      x = 0.5, y = 0.6
+    ))
+
+    object <- filter_genes_by_expression(object, gene_filter = gene_filter)
+    n3 <- dim(object)[1]
+    grid.draw(grid.text(
+      paste0("Genes before filtering:", n1, "\n",
+             "Genes after 1st filtering:", n2, "\n",
+             "Genes after 2nd filtering:", n3),
+      x = 0.5, y = 0.4
+    ))
+    dev.off()
   }
-  object <- RunUMAP(object, reduction = reduction, dims = 1:30, seed.use = seed)
-  object <- FindNeighbors(object, dims = 1:30)
-  object <- FindClusters(object, resolution = 2)
 
-  print(DimPlot(object, label = TRUE, label.box = TRUE))
-  print(FeaturePlot(object, features = "percent.mt"))
-  print(FeaturePlot(object, features = "nCount_RNA"))
-
-  n4 <- dim(object)[2]
-  object <- remove_low_quality_clusters(object,
-                                        lower_bound_param = lower_bound_param,
-                                        higher_bound_param = higher_bound_param)
-
-  object <- subset(object, percent.mt < mt.cutoff)
-
-  n5 <- dim(object)[2]
-  grid.newpage()
-  grid.draw(grid.text(
-    paste0("Cells before QC:", n4, "\n",
-           "Cells after QC:", n5),
-    x = 0.5, y = 0.6
-  ))
-
-  object <- filter_genes_by_expression(object, gene_filter = gene_filter)
-  n3 <- dim(object)[1]
-  grid.draw(grid.text(
-    paste0("Genes before filtering:", n1, "\n",
-           "Genes after 1st filtering:", n2, "\n",
-           "Genes after 2nd filtering:", n3),
-    x = 0.5, y = 0.4
-  ))
-  dev.off()
+  if (dry_run) {
+    message("dry_run = TRUE: returning object after QC. No reprocessing or clustering performed.")
+    return(object)
+  }
 
   object <- preprocess_obj(object,
-                                      vf.method = vf.method,
-                                      nfeatures = nfeatures,
-                                      regress.out = regress.out,
-                                      model.use = model.use,
-                                      pseudobulk_var = pseudobulk_var,
-                                      pseudo_cutoff = pseudo_cutoff)
+                           normalization.method = normalization.method,
+                           vf.method = vf.method,
+                           nfeatures = nfeatures,
+                           regress.out = regress.out,
+                           model.use = model.use,
+                           pseudobulk_var = pseudobulk_var,
+                           pseudo_cutoff = pseudo_cutoff)
 
   # export gene rank - conditionally applicable
   if(vf.method == "vst"){
@@ -1820,14 +1896,14 @@ optimize_single_cell <- function(object = NULL,
     object <- RunHarmony(object, group.by.vars = harmony_vars)
     reduction <- "harmony"
   }
-  object <- RunUMAP(object, reduction = reduction, dims = dims, seed.use = seed)
+  object <- RunUMAP(object, reduction = reduction, min.dist = min.dist, dims = dims, seed.use = seed)
   object <- clustering(object, reduction = reduction, colors = colors, k_range = k_range, resolution_range = resolution_range, dims = dims, clusters_min = clusters_min, clusters_max = clusters_max)
   clusters <- grep("^k\\d+_r\\d+\\.\\d+$", colnames(object@meta.data), value = TRUE)
   print(clusters)
   for(temp_clusters in clusters){
     Idents(object) <- temp_clusters
     print(table(Idents(object)))
-    
+
     if(!is.null(cluster_distribution_layers)){
       plots <- stacked_bar_plots(
         object = object,
@@ -1837,10 +1913,10 @@ optimize_single_cell <- function(object = NULL,
         colors = colors,
         title = "Cluster Distribution"
       )
-      
+
       n_layers <- object[[cluster_distribution_layers]] %>% unlist() %>% as.character %>% unique() %>% length()
       width <- 5 + 0.3 * n_layers
-      
+
       if(length(cluster_distribution_layers) == 3){
         combined_3layer_plot <- combine_stacked_bars(plots)
         ggsave(paste0(temp_clusters, "_barplot.png"), plot = combined_3layer_plot, width = width, height = 5.5, dpi = 300)
@@ -1848,28 +1924,28 @@ optimize_single_cell <- function(object = NULL,
         ggsave(paste0(temp_clusters, "_barplot.png"), plot = plots, width = width, height = 5.5, dpi = 300)
       }
     }
-    
+
     markers <- FindAllMarkers(object, min.pct = min.pct)
     dge <- select_marker_genes_score(markers, log2fc_cutoff = log2fc_cutoff)
-    
+
     write.csv(markers, paste0(temp_clusters, "_dge.csv"))
-    
+
     if(is.list(features)){
       dotplots_features <- c(features, list(dge$gene))
     }else{
       dotplots_features <- list(f1 = features, f2 = dge$gene)
     }
-    
+
     dotplots_pdf(
       object = object,
       features = dotplots_features,
       file_name = paste0(temp_clusters, "_dotplot.pdf")
     )
 
-    heatmap_cell_level(object, 
-                       features = dge$gene, 
-                       idents = temp_clusters, 
-                       colors, 
+    heatmap_cell_level(object,
+                       features = dge$gene,
+                       idents = temp_clusters,
+                       colors,
                        file_name = paste0(temp_clusters, "_heatmap.png"))
   }
   saveRDS(object, "object.rds")

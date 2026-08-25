@@ -6,6 +6,7 @@
 \usage{
 preprocess_obj(
   object,
+  normalization.method = "LogNormalize",
   vf.method = "vst",
   nfeatures = 2000,
   regress.out = NULL,
@@ -16,6 +17,13 @@ preprocess_obj(
 }
 \arguments{
 \item{object}{A Seurat object.}
+
+\item{normalization.method}{Character. Method used to normalize expression data.
+Options: "LogNormalize" (standard Seurat library-size normalization, suitable
+for UMI-based/droplet data), "CLR", "RC", or "log_tpm" (direct log-transformation of
+pre-computed TPM values, appropriate for full-length protocols such as
+Smart-seq2, where library-size normalization has already been performed via
+TPM calculation prior to object construction). Default is "LogNormalize".}
 
 \item{vf.method}{Character. Method for variable feature selection. Options: "vst", "dispersion", "mean.var.plot", "pseudobulk", "sct", "anchor".}
 
@@ -30,9 +38,10 @@ preprocess_obj(
 \item{pseudo_cutoff}{Numeric. Minimum cells per identity to include in pseudobulk. Default is 30.}
 }
 \value{
-A Seurat object processed according to the chosen variable feature method.
+A Seurat object processed according to the chosen normalization and
+variable feature methods.
 }
 \description{
-This function normalizes, selects variable features, and scales a Seurat object.
-based on the chosen variable feature method and scaling method.
+This function normalizes, selects variable features, and scales a Seurat object,
+based on the chosen normalization method, variable feature method, and scaling method.
 }

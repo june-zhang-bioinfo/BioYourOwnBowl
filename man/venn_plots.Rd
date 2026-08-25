@@ -9,7 +9,7 @@ venn_plots(
   comparisons,
   idents,
   direction = "up",
-  log2fc_threshold = log2(1.5),
+  log2fc_cutoff = log2(1.5),
   min_pct = 0.01,
   p_adj_cutoff = 0.05,
   fills = NULL,
@@ -37,7 +37,7 @@ group identities. This column will be set as the active identity.}
 Options are "up" (upregulated in ident.1), "down" (downregulated in ident.1),
 or "both". Default is "up".}
 
-\item{log2fc_threshold}{Numeric value specifying the minimum absolute log2
+\item{log2fc_cutoff}{Numeric value specifying the minimum absolute log2
 fold change threshold for significance. Default is 0.58.}
 
 \item{min_pct}{Numeric value specifying the minimum fraction of cells expressing
@@ -90,9 +90,9 @@ The function performs the following steps:
 \item Creates an area-proportional Venn/Euler diagram showing overlaps
 }
 
-For "up" direction, genes are filtered where avg_log2FC > log2fc_threshold.
-For "down" direction, genes are filtered where avg_log2FC < -log2fc_threshold.
-For "both" direction, genes are filtered where |avg_log2FC| > log2fc_threshold.
+For "up" direction, genes are filtered where avg_log2FC > log2fc_cutoff.
+For "down" direction, genes are filtered where avg_log2FC < -log2fc_cutoff.
+For "both" direction, genes are filtered where |avg_log2FC| > log2fc_cutoff.
 }
 \examples{
 \dontrun{
@@ -107,7 +107,7 @@ result <- venn_plots(
   object = object,
   comparisons = comparisons,
   idents = "Cohort_tp_mutation",
-  log2fc_threshold = 0.58,
+  log2fc_cutoff = 0.58,
   min_pct = 0.3,
   main = "Upregulated Genes"
 )
@@ -124,7 +124,7 @@ venn_plots(
   comparisons = comparisons,
   idents = "treatment",
   direction = "down",
-  log2fc_threshold = 0.5
+  log2fc_cutoff = 0.5
 )
 
 # Access results

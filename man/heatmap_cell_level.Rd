@@ -18,6 +18,7 @@ heatmap_cell_level(
   downsample = FALSE,
   file_name = NULL,
   zlim = c(-2, 2),
+  color_palette = c("#4575b4", "white", "#d73027"),
   width = 6,
   height = NULL,
   fontsize = 3,
@@ -61,6 +62,8 @@ If numeric, downsamples each group to that number of cells (default = FALSE).}
 If \code{NULL}, the plot is not saved (default = NULL).}
 
 \item{zlim}{Numeric vector of length 2 specifying limits for Z-score color scale (default = c(-2, 2)).}
+
+\item{color_palette}{Character vector of length 3 specifying colors for (min, center, max) of the gene expression color scale, matching the convention used in heatmap_pseudobulk() and heatmap_group_level(). Default is c("#4575b4", "white", "#d73027").}
 
 \item{width}{Numeric. Width of the output PNG in inches (default = 6).}
 

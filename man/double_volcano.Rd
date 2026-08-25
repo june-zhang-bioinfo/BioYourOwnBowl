@@ -7,6 +7,7 @@
 double_volcano(
   object,
   comparison_table,
+  idents = NULL,
   output_dir = "2dim_log2fc",
   lfc_threshold = log2(1.5),
   pval_cutoff = 0.05,

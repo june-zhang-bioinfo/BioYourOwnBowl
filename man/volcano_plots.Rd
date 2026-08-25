@@ -11,7 +11,7 @@ volcano_plots(
   ident2,
   show_labels = FALSE,
   log2fc_cutoff = 1,
-  p_cutoff = 0.05,
+  p_adj_cutoff = 0.05,
   file_name = NULL,
   title = NULL,
   width = 2000,
@@ -46,7 +46,7 @@ in the comparison, typically the "control" group).}
 \item{log2fc_cutoff}{Numeric value for log2 fold change threshold to highlight
 significant genes. Default is 1.}
 
-\item{p_cutoff}{Numeric value for adjusted p-value cutoff to highlight significant
+\item{p_adj_cutoff}{Numeric value for adjusted p-value cutoff to highlight significant
 genes. Default is 0.05.}
 
 \item{file_name}{Optional character string for output file prefix. If provided,
@@ -102,7 +102,7 @@ The function performs the following steps:
 \examples{
 \dontrun{
 # No labels (default)
-result <- plot_volcano_de(
+result <- volcano_plots(
   object = seurat_obj,
   idents = "cell_type",
   ident1 = "CD8 T",
@@ -110,7 +110,7 @@ result <- plot_volcano_de(
 )
 
 # Show all labels
-result <- plot_volcano_de(
+result <- volcano_plots(
   object = seurat_obj,
   idents = "treatment",
   ident1 = "Treated",
@@ -120,14 +120,14 @@ result <- plot_volcano_de(
 
 # Show specific genes only
 selected <- c("GNLY", "GZMB", "PRF1", "CCL4")
-result <- plot_volcano_de(
+result <- volcano_plots(
   object = seurat_obj,
   idents = "Timepoint disease stage",
   ident1 = "FC",
   ident2 = "Acute HBV resolved",
   show_labels = selected,
   log2fc_cutoff = 1,
-  p_cutoff = 0.01,
+  p_adj_cutoff = 0.01,
   file_name = "volcano/FC_vs_Acute",
   title = "CD8 T cells"
 )

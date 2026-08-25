@@ -17,7 +17,15 @@ heatmap_pseudobulk(
   heatmap_title = "Z-score",
   color_range = c(-2, 0, 2),
   color_palette = c("#4575b4", "white", "#d73027"),
-  annotation_height = unit(4, "mm")
+  annotation_height = unit(4, "mm"),
+  bold_genes = NULL,
+  italic_genes = FALSE,
+  fontsize = 6,
+  angle_col = 90,
+  file_name = NULL,
+  width = 6,
+  height = 6,
+  res = 300
 )
 }
 \arguments{
@@ -58,9 +66,34 @@ Default is "Z-score".}
 
 \item{annotation_height}{Unit object specifying the height of the annotation bar.
 Default is unit(4, "mm").}
+
+\item{bold_genes}{Character vector of gene names to render in bold on row labels.
+Default is NULL (no bolding).}
+
+\item{italic_genes}{Logical. If TRUE, renders all gene names in italic font.
+Interacts with bold_genes to create bold-italic labels if both apply.
+Default is FALSE.}
+
+\item{fontsize}{Numeric. Font size for row (gene) name labels and the group
+label block. Default is 6.}
+
+\item{angle_col}{Numeric. Rotation angle (in degrees) for the cohort/timepoint
+group labels. Unlike ComplexHeatmap's default column_title (which only
+supports 0 or 90 degrees), this is rendered via a custom anno_block
+annotation and accepts arbitrary angles (e.g., 45, 315). Default is 90.}
+
+\item{file_name}{Character. File name for the saved heatmap (SVG). If NULL,
+the plot is not saved. Default is NULL.}
+
+\item{width}{Numeric. Width of the output file in inches. Default is 6.}
+
+\item{height}{Numeric. Height of the output file in inches. Default is 6.}
+
+\item{res}{Numeric. Resolution of the output file in DPI. Default is 300.}
 }
 \value{
-A ComplexHeatmap object
+A ComplexHeatmap object. The heatmap is also saved to file if
+file_name is provided.
 }
 \description{
 This function creates a heatmap showing gene expression z-scores aggregated
@@ -74,7 +107,7 @@ The function performs the following steps:
 \item Averages expression per gene, per patient, per cohort/timepoint
 \item Computes z-scores across all samples for each gene (row-wise)
 \item Orders samples according to the specified group order
-\item Creates a heatmap with cohort annotations
+\item Creates a heatmap with cohort annotations and a rotated group label block
 }
 
 Z-scores are calculated as: \deqn{z = (x - mean(x)) / sd(x)}
@@ -93,28 +126,18 @@ heatmap_pseudobulk(
   groups = c("Chronic Pre-DAA", "ACTG Pre-DAA", "SR Pre-resolution")
 )
 
-# With custom colors
-my_colors <- c(
-  "Chronic Pre-DAA" = "#F8A19FB2",
-  "ACTG Pre-DAA" = "#2ED9FFB2",
-  "SR Pre-resolution" = "#FEAF16B2"
-)
-
+# With bold/italic gene labels, rotated group labels, and custom sizing
 heatmap_pseudobulk(
   object = object,
   features = marker_genes,
   groups = c("Chronic Pre-DAA", "ACTG Pre-DAA", "SR Pre-resolution"),
-  colors = my_colors,
-  cluster_rows = TRUE
-)
-
-# With custom metadata columns
-heatmap_pseudobulk(
-  object = object,
-  features = marker_genes,
-  groups = c("Group1", "Group2", "Group3"),
-  idents = "treatment_group",
-  pseudobulk_column = "sample_id"
+  bold_genes = c("PDCD1", "TOX"),
+  italic_genes = TRUE,
+  fontsize = 8,
+  angle_col = 45,
+  width = 8,
+  height = 10,
+  file_name = "pseudobulk_heatmap.svg"
 )
 }
 

@@ -619,7 +619,7 @@ for ax in axes:
         ax.set_ylabel('scRNA-seq_UMAP2')
     else:
         ax.set_ylabel('')
-plt.savefig('density_{meta_col}.png', bbox_inches='tight', dpi=300)
+plt.savefig('density_{meta_col}.svg', bbox_inches='tight', dpi=300)
 plt.close('all')
 ")
 
@@ -652,7 +652,7 @@ plt.close('all')
 #'   }
 #' @param log2fc_cutoff Numeric value for log2 fold change threshold to highlight
 #'   significant genes. Default is 1.
-#' @param p_cutoff Numeric value for adjusted p-value cutoff to highlight significant
+#' @param p_adj_cutoff Numeric value for adjusted p-value cutoff to highlight significant
 #'   genes. Default is 0.05.
 #' @param file_name Optional character string for output file prefix. If provided,
 #'   plots will be saved as PNG files. If NULL, plots are displayed but not saved.
@@ -693,7 +693,7 @@ plt.close('all')
 #' @examples
 #' \dontrun{
 #' # No labels (default)
-#' result <- plot_volcano_de(
+#' result <- volcano_plots(
 #'   object = seurat_obj,
 #'   idents = "cell_type",
 #'   ident1 = "CD8 T",
@@ -701,7 +701,7 @@ plt.close('all')
 #' )
 #'
 #' # Show all labels
-#' result <- plot_volcano_de(
+#' result <- volcano_plots(
 #'   object = seurat_obj,
 #'   idents = "treatment",
 #'   ident1 = "Treated",
@@ -711,14 +711,14 @@ plt.close('all')
 #'
 #' # Show specific genes only
 #' selected <- c("GNLY", "GZMB", "PRF1", "CCL4")
-#' result <- plot_volcano_de(
+#' result <- volcano_plots(
 #'   object = seurat_obj,
 #'   idents = "Timepoint disease stage",
 #'   ident1 = "FC",
 #'   ident2 = "Acute HBV resolved",
 #'   show_labels = selected,
 #'   log2fc_cutoff = 1,
-#'   p_cutoff = 0.01,
+#'   p_adj_cutoff = 0.01,
 #'   file_name = "volcano/FC_vs_Acute",
 #'   title = "CD8 T cells"
 #' )
@@ -734,7 +734,7 @@ volcano_plots <- function(object,
                           ident2,
                           show_labels = FALSE,
                           log2fc_cutoff = 1,
-                          p_cutoff = 0.05,
+                          p_adj_cutoff = 0.05,
                           file_name = NULL,
                           title = NULL,
                           width = 2000,
@@ -777,11 +777,11 @@ volcano_plots <- function(object,
   markers$gene <- rownames(markers)
   markers$p_val[markers$p_val == 0] <- .Machine$double.xmin
 
-  deg <- subset(markers, abs(avg_log2FC) > log2fc_cutoff & p_val_adj < p_cutoff)
+  deg <- subset(markers, abs(avg_log2FC) > log2fc_cutoff & p_val_adj < p_adj_cutoff)
 
   # Count DEGs
-  deg_up <- sum(markers$avg_log2FC > log2fc_cutoff & markers$p_val_adj < p_cutoff, na.rm = TRUE)
-  deg_down <- sum(markers$avg_log2FC < -log2fc_cutoff & markers$p_val_adj < p_cutoff, na.rm = TRUE)
+  deg_up <- sum(markers$avg_log2FC > log2fc_cutoff & markers$p_val_adj < p_adj_cutoff, na.rm = TRUE)
+  deg_down <- sum(markers$avg_log2FC < -log2fc_cutoff & markers$p_val_adj < p_adj_cutoff, na.rm = TRUE)
 
   # Prepare caption
   caption_text <- paste0(
@@ -825,7 +825,7 @@ volcano_plots <- function(object,
         labSize = 0,
         pointSize = point_size,
         lengthConnectors = unit(0.01, "npc"),
-        pCutoff = p_cutoff,
+        pCutoff = p_adj_cutoff,
         x = "avg_log2FC",
         y = "p_val_adj",
         FCcutoff = log2fc_cutoff,
@@ -845,7 +845,7 @@ volcano_plots <- function(object,
         labSize = lab_size,
         pointSize = point_size,
         lengthConnectors = unit(0.01, "npc"),
-        pCutoff = p_cutoff,
+        pCutoff = p_adj_cutoff,
         x = "avg_log2FC",
         y = "p_val_adj",
         FCcutoff = log2fc_cutoff,
@@ -908,6 +908,7 @@ volcano_plots <- function(object,
 double_volcano <- function(
     object,
     comparison_table,
+    idents = NULL,
     output_dir     = "2dim_log2fc",
     lfc_threshold  = log2(1.5),
     pval_cutoff    = 0.05,
@@ -949,7 +950,7 @@ double_volcano <- function(
     }
   }
 
-  Idents(object) <- object$Cohort_tp_mutation
+  Idents(object) <- idents
   plot_files  <- list()
   merged_list <- list()
 
@@ -1086,13 +1087,21 @@ double_volcano <- function(
 
 #' Generate Treemaps of TCR Clonotypes for Selected Epitopes
 #'
-#' This function creates treemaps of TCR clonotypes for each patient and selected epitope,
-#' highlighting the distribution of clonotypes. Only patients with a minimum number
-#' of cells per epitope are included.
+#' This function creates treemaps of TCR clonotypes for each patient (and,
+#' optionally, each time point) for selected epitopes, highlighting the
+#' distribution of clonotypes. Only patient-epitope (or patient-epitope-time
+#' point) groups with a minimum number of cells are included. When
+#' \code{time_point_col} is supplied, only participant-epitope combinations
+#' with more than one qualifying time point are plotted, since a single
+#' time point has nothing to compare against.
 #'
 #' @param object A \code{Seurat} object containing TCR metadata in \code{meta.data}.
 #' @param top_epitope Character vector of epitopes of interest.
-#' @param min_cells Integer. Minimum number of cells for a patient-epitope pair to be included. Default is 20.
+#' @param epitope_col Character. Name of the metadata column holding epitope/specificity. Default "Specificity".
+#' @param clonotype_col Character. Name of the metadata column holding clonotype IDs. Default "raw_clonotype_id".
+#' @param participant_col Character. Name of the metadata column identifying the participant/patient. Default "participant".
+#' @param time_point_col Character or NULL. Name of the metadata column identifying time point (e.g., "pre"/"on"). If NULL (default), no time-point splitting is done. If supplied, one treemap is generated per participant-epitope-timepoint combination (only for participant-epitope pairs with 2+ qualifying time points), and clonotype colors are kept consistent across time points and participants within each epitope.
+#' @param min_cells Integer. Minimum number of cells for a group to be included. Default is 20.
 #' @param output_dir Character. Directory to save treemap PNGs. Defaults to current working directory.
 #' @param color_palette Character vector of colors to use for clonotypes. If NULL, defaults to RColorBrewer "Set3".
 #'
@@ -1101,73 +1110,123 @@ double_volcano <- function(
 #'
 #' @examples
 #' \dontrun{
-#' tcr_treemaps(object, top_epitope = c("Epitope1", "Epitope2"), min_cells = 20,
-#'                        output_dir = "treemaps/")
+#' tcr_treemaps(object, top_epitope = c("Epitope1", "Epitope2"),
+#'              participant_col = "patient_id", time_point_col = "timepoint",
+#'              min_cells = 20, output_dir = "treemaps/")
 #' }
 tcr_treemaps <- function(
     object,
     top_epitope,
+    epitope_col = "Specificity",
+    clonotype_col = "raw_clonotype_id",
+    participant_col = "participant",
+    time_point_col = NULL,
     min_cells = 20,
     output_dir = ".",
     color_palette = NULL
 ) {
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
-
   meta_tcr <- object@meta.data
-  meta_tcr <- meta_tcr[!is.na(meta_tcr$raw_clonotype_id), ]
-
-  # Store valid epitope-patient pairs
+  
+  # Validate requested columns exist
+  required_cols <- c(epitope_col, clonotype_col, participant_col)
+  if (!is.null(time_point_col)) required_cols <- c(required_cols, time_point_col)
+  missing_cols <- setdiff(required_cols, colnames(meta_tcr))
+  if (length(missing_cols) > 0) {
+    stop("Column(s) not found in meta.data: ", paste(missing_cols, collapse = ", "))
+  }
+  
+  meta_tcr <- meta_tcr[!is.na(meta_tcr[[clonotype_col]]), ]
+  
+  has_time_point <- !is.null(time_point_col)
+  
+  # --- Build valid group combinations (epitope x participant [x time_point]) ---
   plot_pairs <- data.frame()
-
   for (epitope in top_epitope) {
-    temp_meta <- subset(meta_tcr, Specificity == epitope)
-    patients <- unique(temp_meta$participant)
+    temp_meta <- meta_tcr[meta_tcr[[epitope_col]] == epitope, ]
+    patients <- unique(temp_meta[[participant_col]])
     for (p in patients) {
-      temp_meta_patient <- subset(temp_meta, participant == p)
-      if (nrow(temp_meta_patient) >= min_cells) {
-        plot_pairs <- rbind(plot_pairs,
-                            data.frame(epitope = epitope,
-                                       patient = p,
-                                       stringsAsFactors = FALSE))
+      temp_meta_patient <- temp_meta[temp_meta[[participant_col]] == p, ]
+      
+      if (has_time_point) {
+        time_points <- unique(temp_meta_patient[[time_point_col]])
+        for (tp in time_points) {
+          temp_meta_tp <- temp_meta_patient[temp_meta_patient[[time_point_col]] == tp, ]
+          if (nrow(temp_meta_tp) >= min_cells) {
+            plot_pairs <- rbind(plot_pairs,
+                                data.frame(epitope = epitope,
+                                           patient = p,
+                                           time_point = tp,
+                                           stringsAsFactors = FALSE))
+          }
+        }
+      } else {
+        if (nrow(temp_meta_patient) >= min_cells) {
+          plot_pairs <- rbind(plot_pairs,
+                              data.frame(epitope = epitope,
+                                         patient = p,
+                                         stringsAsFactors = FALSE))
+        }
       }
     }
   }
-
+  
+  # Only keep participant-epitope groups with more than one qualifying
+  # time point -- a single time point has nothing to compare against
+  if (has_time_point && nrow(plot_pairs) > 0) {
+    group_key <- interaction(plot_pairs$patient, plot_pairs$epitope, drop = TRUE)
+    group_counts <- table(group_key)
+    valid_groups <- names(group_counts[group_counts > 1])
+    plot_pairs <- plot_pairs[group_key %in% valid_groups, ]
+  }
+  
   plot_files <- c()
-
-  # Process each epitope
+  
+  # --- Process each epitope ---
   for (epitope in unique(plot_pairs$epitope)) {
-    # Generate colors once per epitope
-    temp_df <- subset(meta_tcr, Specificity == epitope)
-    color_df <- as.data.frame(sort(table(temp_df$raw_clonotype_id), decreasing = TRUE))
+    
+    # Build clonotype -> color mapping ONCE per epitope, using ALL cells
+    # for that epitope (across every participant and time point). This is
+    # what keeps a given clonotype's color fixed across pre/on plots and
+    # across participants.
+    temp_df <- meta_tcr[meta_tcr[[epitope_col]] == epitope, ]
+    color_df <- as.data.frame(sort(table(temp_df[[clonotype_col]]), decreasing = TRUE))
     color_df$Freq <- NULL
     colnames(color_df) <- "Clonotype"
-
+    
     if (is.null(color_palette)) {
       base_colors <- RColorBrewer::brewer.pal(12, "Set3")
     } else {
       base_colors <- color_palette
     }
-
     set.seed(match(epitope, unique(plot_pairs$epitope)))
     color_df$Color <- sample(base_colors[(1:nrow(color_df)) %% length(base_colors) + 1])
-
-    # Get patients for this epitope
-    patients_for_epitope <- plot_pairs$patient[plot_pairs$epitope == epitope]
-
-    # Create treemap for each patient
-    for (patient in patients_for_epitope) {
-      temp_df <- subset(meta_tcr,
-                        participant == patient & Specificity == epitope)
-      tree <- left_join(as.data.frame(table(temp_df$raw_clonotype_id)),
+    
+    # Rows in plot_pairs for this epitope
+    epitope_pairs <- plot_pairs[plot_pairs$epitope == epitope, ]
+    
+    for (i in seq_len(nrow(epitope_pairs))) {
+      patient <- epitope_pairs$patient[i]
+      
+      if (has_time_point) {
+        tp <- epitope_pairs$time_point[i]
+        temp_df <- meta_tcr[meta_tcr[[participant_col]] == patient &
+                              meta_tcr[[epitope_col]] == epitope &
+                              meta_tcr[[time_point_col]] == tp, ]
+        title_text <- paste(patient, "-", epitope, "-", tp)
+      } else {
+        temp_df <- meta_tcr[meta_tcr[[participant_col]] == patient &
+                              meta_tcr[[epitope_col]] == epitope, ]
+        title_text <- paste(patient, "-", epitope)
+      }
+      
+      tree <- left_join(as.data.frame(table(temp_df[[clonotype_col]])),
                         color_df,
                         by = c("Var1" = "Clonotype"))
       colnames(tree) <- c("Clonotype", "Count", "Color")
       tree$Clonotype <- paste(tree$Clonotype, paste0("[", tree$Count, "]"))
-
-      title_text <- paste(patient, "-", epitope)
+      
       outfile <- file.path(output_dir, paste0(title_text, ".png"))
-
       png(outfile, width = 2000, height = 2000, res = 400, units = "px")
       treemap::treemap(tree,
                        index = "Clonotype",
@@ -1179,14 +1238,284 @@ tcr_treemaps <- function(
                        border.lwds = 0.5,
                        fontface.labels = 1)
       dev.off()
-
       plot_files <- c(plot_files, outfile)
     }
   }
-
+  
   message("Created ", length(plot_files), " treemap plots in ", output_dir)
   return(invisible(plot_files))
 }
+
+#' Generate Area-Proportional Euler Diagrams of Unique TCR Clonotype Overlap
+#'
+#' This function creates area-proportional Euler diagrams showing the overlap 
+#' of *unique* clonotypes between time points, using \code{eulerr}.
+#' Label background boxes are removed (text only).
+#'
+#' @param object A \code{Seurat} object containing TCR metadata in \code{meta.data}.
+#' @param top_epitope Character vector of epitopes of interest.
+#' @param epitope_col Character. Name of the metadata column holding epitope/specificity. Default "Specificity".
+#' @param clonotype_col Character. Name of the metadata column holding clonotype IDs. Default "raw_clonotype_id".
+#' @param participant_col Character. Name of the metadata column identifying the participant/patient. Default "participant".
+#' @param time_point_col Character. Name of the metadata column identifying time point. Required.
+#' @param time_point_levels Character vector or NULL. Fixed order for time points.
+#' @param min_cells Integer. Minimum number of cells for a group to be included. Default 20.
+#' @param output_dir Character. Directory to save PNGs.
+#' @param set_colors Character vector of colors for set outlines/labels. 
+#' @param width,height Numeric. Output PNG dimensions in inches. Default 6 x 6.
+#'
+#' @return Invisibly returns a list of generated PNG file paths.
+#' @export
+tcr_venn <- function(
+    object,
+    top_epitope,
+    epitope_col = "Specificity",
+    clonotype_col = "raw_clonotype_id",
+    participant_col = "participant",
+    time_point_col,
+    time_point_levels = NULL,
+    min_cells = 20,
+    output_dir = ".",
+    set_colors = NULL,
+    width = 6,
+    height = 6
+) {
+  if (missing(time_point_col) || is.null(time_point_col)) {
+    stop("time_point_col is required -- a Venn diagram needs at least two time points to compare.")
+  }
+  
+  if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
+  meta_tcr <- object@meta.data
+  
+  # Validate requested columns exist
+  required_cols <- c(epitope_col, clonotype_col, participant_col, time_point_col)
+  missing_cols <- setdiff(required_cols, colnames(meta_tcr))
+  if (length(missing_cols) > 0) {
+    stop("Column(s) not found in meta.data: ", paste(missing_cols, collapse = ", "))
+  }
+  
+  meta_tcr <- meta_tcr[!is.na(meta_tcr[[clonotype_col]]), ]
+  
+  # Determine a single, fixed ordering for time points
+  all_time_points <- unique(meta_tcr[[time_point_col]])
+  if (is.null(time_point_levels)) {
+    time_point_order <- sort(as.character(all_time_points))
+  } else {
+    time_point_order <- as.character(time_point_levels)
+  }
+  
+  # Build valid group combinations
+  plot_pairs <- data.frame()
+  for (epitope in top_epitope) {
+    temp_meta <- meta_tcr[meta_tcr[[epitope_col]] == epitope, ]
+    patients <- unique(temp_meta[[participant_col]])
+    for (p in patients) {
+      temp_meta_patient <- temp_meta[temp_meta[[participant_col]] == p, ]
+      for (tp in time_point_order) {
+        temp_meta_tp <- temp_meta_patient[temp_meta_patient[[time_point_col]] == tp, ]
+        if (nrow(temp_meta_tp) >= min_cells) {
+          plot_pairs <- rbind(plot_pairs,
+                              data.frame(epitope = epitope,
+                                         patient = p,
+                                         time_point = tp,
+                                         stringsAsFactors = FALSE))
+        }
+      }
+    }
+  }
+  
+  if (nrow(plot_pairs) > 0) {
+    group_key <- interaction(plot_pairs$patient, plot_pairs$epitope, drop = TRUE)
+    group_counts <- table(group_key)
+    valid_groups <- names(group_counts[group_counts > 1])
+    plot_pairs <- plot_pairs[group_key %in% valid_groups, ]
+  }
+  
+  plot_files <- c()
+  
+  if (nrow(plot_pairs) == 0) {
+    message("No participant-epitope combinations with more than one qualifying time point.")
+    return(invisible(plot_files))
+  }
+  
+  plot_pairs$time_point <- factor(plot_pairs$time_point, levels = time_point_order)
+  group_key <- interaction(plot_pairs$patient, plot_pairs$epitope, drop = TRUE)
+  
+  for (grp in unique(group_key)) {
+    grp_rows <- plot_pairs[group_key == grp, ]
+    grp_rows <- grp_rows[order(grp_rows$time_point), ]
+    patient <- grp_rows$patient[1]
+    epitope <- grp_rows$epitope[1]
+    time_points <- as.character(grp_rows$time_point)
+    n_tp <- length(time_points)
+    
+    if (n_tp > 7) {
+      warning("Skipping ", patient, " - ", epitope, ": exceeds 7 sets.")
+      next
+    }
+    
+    clonotype_sets <- lapply(time_points, function(tp) {
+      temp_df <- meta_tcr[meta_tcr[[participant_col]] == patient &
+                            meta_tcr[[epitope_col]] == epitope &
+                            meta_tcr[[time_point_col]] == tp, ]
+      unique(temp_df[[clonotype_col]])
+    })
+    names(clonotype_sets) <- time_points
+    
+    if (is.null(set_colors)) {
+      base_colors <- RColorBrewer::brewer.pal(max(3, n_tp), "Set2")[seq_len(n_tp)]
+    } else {
+      base_colors <- rep(set_colors, length.out = n_tp)
+    }
+    
+    color_lookup <- setNames(rep(base_colors, length.out = length(time_point_order)), time_point_order)
+    group_colors <- unname(color_lookup[time_points])
+    title_text <- paste0(patient, "  ", epitope)
+    outfile <- file.path(output_dir, paste0(title_text, "_venn.png"))
+    
+    # --- Area-Proportional Fit using eulerr ---
+    fit <- eulerr::euler(clonotype_sets, shape = "ellipse")
+    
+    p <- plot(fit,
+              fills = "white",
+              edges = list(col = group_colors, lwd = 2),
+              labels = list(col = group_colors, fontfamily = "sans"),
+              quantities = list(type = "counts", fontfamily = "sans"), # Text only, no box!
+              main = list(label = title_text, fontfamily = "sans")
+    )
+    
+    # eulerr objects print best through base graphics devices rather than ggsave
+    grDevices::png(outfile, width = width, height = height, units = "in", res = 400, bg = "white")
+    print(p)
+    grDevices::dev.off()
+    
+    plot_files <- c(plot_files, outfile)
+  }
+  
+  message("Created ", length(plot_files), " area-proportional plots in ", output_dir)
+  return(invisible(plot_files))
+}
+
+#' Generate Volcano Plots for Unique TCR Clonotypes (Participant-Level)
+#'
+#' This function iterates through participant-epitope combinations, matching 
+#' the logic of the tcr_venn function. It first filters out cells lacking 
+#' valid clonotype information. Then, if a participant has >= min_cells for 
+#' BOTH time points (ident1 and ident2), it runs Seurat's FindMarkers and 
+#' generates a Volcano plot using the provided volcano_plots function.
+#'
+#' @param object A Seurat object.
+#' @param top_epitope Character vector of epitopes of interest.
+#' @param epitope_col Character. Name of the metadata column defining the specificity. Default "Specificity".
+#' @param clonotype_col Character. Name of the metadata column holding clonotype IDs. Default "raw_clonotype_id".
+#' @param participant_col Character. Name of the metadata column defining the participant. Default "participant".
+#' @param time_point_col Character. Name of the metadata column defining the condition to compare. Default "time_point".
+#' @param ident1 Character. The test condition (e.g., "on").
+#' @param ident2 Character. The reference condition (e.g., "pre").
+#' @param min_cells Integer. Minimum cells required in BOTH conditions to run DGE. Default 20.
+#' @param output_dir Character. Directory to save the plots and CSVs.
+#' @param show_labels Logical or character vector. Passed to volcano_plots.
+#' @param log2fc_cutoff Numeric. Minimum absolute log2 fold-change.
+#' @param p_adj_cutoff Numeric. Maximum adjusted p-value.
+#' 
+#' @return A list containing the full DEG results dataframes for each valid comparison.
+#' @export
+tcr_volcanos <- function(
+    object,
+    top_epitope,
+    epitope_col = "Specificity",
+    clonotype_col = "raw_clonotype_id", # Added this parameter
+    participant_col = "participant",
+    time_point_col = "time_point",
+    ident1 = "pre",
+    ident2 = "on",
+    min_cells = 20,
+    output_dir = "volcano_results",
+    show_labels = FALSE,
+    log2fc_cutoff = log2(1.5),
+    p_adj_cutoff = 0.05
+) {
+  
+  if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
+  meta_data <- object@meta.data
+  
+  # Validate requested columns exist
+  required_cols <- c(epitope_col, participant_col, time_point_col, clonotype_col)
+  missing_cols <- setdiff(required_cols, colnames(meta_data))
+  if (length(missing_cols) > 0) {
+    stop("Column(s) not found in meta.data: ", paste(missing_cols, collapse = ", "))
+  }
+  
+  # MATCHING VENN LOGIC: Drop cells with no TCR before counting!
+  meta_data <- meta_data[!is.na(meta_data[[clonotype_col]]), ]
+  
+  all_results <- list()
+  
+  for (epitope in top_epitope) {
+    # Find all patients that have this epitope
+    patients <- unique(meta_data[[participant_col]][meta_data[[epitope_col]] == epitope])
+    
+    for (p in patients) {
+      
+      # 1. Identify all cells belonging to this specific patient AND epitope
+      cell_idx <- meta_data[[epitope_col]] == epitope & meta_data[[participant_col]] == p
+      
+      # 2. Count cells for ident1 and ident2
+      n_ident1 <- sum(cell_idx & meta_data[[time_point_col]] == ident1, na.rm = TRUE)
+      n_ident2 <- sum(cell_idx & meta_data[[time_point_col]] == ident2, na.rm = TRUE)
+      
+      # 3. Check if BOTH conditions meet the minimum cell threshold
+      if (n_ident1 >= min_cells && n_ident2 >= min_cells) {
+        
+        message(paste("Processing:", p, "-", epitope, 
+                      "(", ident1, "=", n_ident1, "cells,", ident2, "=", n_ident2, "cells )"))
+        
+        # Subset the Seurat object for just this patient-epitope combination
+        cells_to_keep <- rownames(meta_data)[cell_idx]
+        sub_obj <- subset(object, cells = cells_to_keep)
+        
+        # Define titles and file names
+        title_text <- paste(p, "-", epitope)
+        base_name <- paste0(p, "_", epitope, "_", ident1, "_vs_", ident2)
+        plot_file <- file.path(output_dir, paste0(base_name, "_volcano.png"))
+        csv_file <- file.path(output_dir, paste0(base_name, "_DGE.csv"))
+        
+        # Run your custom volcano function
+        # It handles setting Idents, running FindMarkers, drawing, and saving the plot
+        deg_res <- volcano_plots(
+          object = sub_obj,
+          idents = time_point_col,
+          ident1 = ident1,
+          ident2 = ident2,
+          show_labels = show_labels,
+          log2fc_cutoff = log2fc_cutoff,
+          p_adj_cutoff = p_adj_cutoff,
+          file_name = plot_file,
+          title = title_text
+          # Using defaults for the rest of your volcano function parameters
+        )
+        
+        # Add metadata tracking to the results and save as CSV
+        deg_res$participant <- p
+        deg_res$epitope <- epitope
+        deg_res$comparison <- paste(ident1, "vs", ident2)
+        write.csv(deg_res, csv_file, row.names = FALSE)
+        
+        # Store in list
+        list_name <- paste0(p, "_", epitope)
+        all_results[[list_name]] <- deg_res
+        
+      } else {
+        # Optional: Print a message for skipped combinations to track attrition
+        # message(paste("Skipped:", p, "-", epitope, "(Not enough cells in one or both conditions)"))
+      }
+    }
+  }
+  
+  message("Finished! Processed ", length(all_results), " valid participant-epitope pairs.")
+  return(invisible(all_results))
+}
+
 
 #' Generate Patient-Level Expression Heatmap with Z-scores
 #'
@@ -1219,8 +1548,25 @@ tcr_treemaps <- function(
 #'   (min, center, max). Default is c("#4575b4", "white", "#d73027").
 #' @param annotation_height Unit object specifying the height of the annotation bar.
 #'   Default is unit(4, "mm").
+#' @param bold_genes Character vector of gene names to render in bold on row labels.
+#'   Default is NULL (no bolding).
+#' @param italic_genes Logical. If TRUE, renders all gene names in italic font.
+#'   Interacts with bold_genes to create bold-italic labels if both apply.
+#'   Default is FALSE.
+#' @param fontsize Numeric. Font size for row (gene) name labels and the group
+#'   label block. Default is 6.
+#' @param angle_col Numeric. Rotation angle (in degrees) for the cohort/timepoint
+#'   group labels. Unlike ComplexHeatmap's default column_title (which only
+#'   supports 0 or 90 degrees), this is rendered via a custom anno_block
+#'   annotation and accepts arbitrary angles (e.g., 45, 315). Default is 90.
+#' @param file_name Character. File name for the saved heatmap (SVG). If NULL,
+#'   the plot is not saved. Default is NULL.
+#' @param width Numeric. Width of the output file in inches. Default is 6.
+#' @param height Numeric. Height of the output file in inches. Default is 6.
+#' @param res Numeric. Resolution of the output file in DPI. Default is 300.
 #'
-#' @return A ComplexHeatmap object
+#' @return A ComplexHeatmap object. The heatmap is also saved to file if
+#'   file_name is provided.
 #'
 #' @details
 #' The function performs the following steps:
@@ -1229,7 +1575,7 @@ tcr_treemaps <- function(
 #'   \item Averages expression per gene, per patient, per cohort/timepoint
 #'   \item Computes z-scores across all samples for each gene (row-wise)
 #'   \item Orders samples according to the specified group order
-#'   \item Creates a heatmap with cohort annotations
+#'   \item Creates a heatmap with cohort annotations and a rotated group label block
 #' }
 #'
 #' Z-scores are calculated as: \deqn{z = (x - mean(x)) / sd(x)}
@@ -1248,75 +1594,73 @@ tcr_treemaps <- function(
 #'   groups = c("Chronic Pre-DAA", "ACTG Pre-DAA", "SR Pre-resolution")
 #' )
 #'
-#' # With custom colors
-#' my_colors <- c(
-#'   "Chronic Pre-DAA" = "#F8A19FB2",
-#'   "ACTG Pre-DAA" = "#2ED9FFB2",
-#'   "SR Pre-resolution" = "#FEAF16B2"
-#' )
-#'
+#' # With bold/italic gene labels, rotated group labels, and custom sizing
 #' heatmap_pseudobulk(
 #'   object = object,
 #'   features = marker_genes,
 #'   groups = c("Chronic Pre-DAA", "ACTG Pre-DAA", "SR Pre-resolution"),
-#'   colors = my_colors,
-#'   cluster_rows = TRUE
-#' )
-#'
-#' # With custom metadata columns
-#' heatmap_pseudobulk(
-#'   object = object,
-#'   features = marker_genes,
-#'   groups = c("Group1", "Group2", "Group3"),
-#'   idents = "treatment_group",
-#'   pseudobulk_column = "sample_id"
+#'   bold_genes = c("PDCD1", "TOX"),
+#'   italic_genes = TRUE,
+#'   fontsize = 8,
+#'   angle_col = 45,
+#'   width = 8,
+#'   height = 10,
+#'   file_name = "pseudobulk_heatmap.svg"
 #' )
 #' }
 #'
 #' @export
 heatmap_pseudobulk <- function(object,
-                                            features,
-                                            groups = NULL,
-                                            idents = NULL,
-                                            pseudobulk_column = NULL,
-                                            colors = NULL,
-                                            cluster_rows = FALSE,
-                                            cluster_columns = FALSE,
-                                            show_column_names = FALSE,
-                                            heatmap_title = "Z-score",
-                                            color_range = c(-2, 0, 2),
-                                            color_palette = c("#4575b4", "white", "#d73027"),
-                                            annotation_height = unit(4, "mm")) {
-
+                               features,
+                               groups = NULL,
+                               idents = NULL,
+                               pseudobulk_column = NULL,
+                               colors = NULL,
+                               cluster_rows = FALSE,
+                               cluster_columns = FALSE,
+                               show_column_names = FALSE,
+                               heatmap_title = "Z-score",
+                               color_range = c(-2, 0, 2),
+                               color_palette = c("#4575b4", "white", "#d73027"),
+                               annotation_height = unit(4, "mm"),
+                               bold_genes = NULL,
+                               italic_genes = FALSE,
+                               fontsize = 6,
+                               angle_col = 90,
+                               file_name = NULL,
+                               width = 6,
+                               height = 6,
+                               res = 300) {
+  
   # Set default column names if NULL
   if (is.null(idents)) {
     idents <- "cohort_tp"
   }
   
   if (is.null(groups)) {
-    groups <- unique(object[[idents]])[[1]]%>% as.character()%>% str_sort()
+    groups <- unique(object[[idents]])[[1]] %>% as.character() %>% str_sort()
   }
-
+  
   if (is.null(pseudobulk_column)) {
     pseudobulk_column <- "Patient"
   }
-
+  
   cells_to_keep <- colnames(object)[object[[idents]] %>% unlist %in% groups]
   object <- subset(object, cells = cells_to_keep)
-
+  
   features <- intersect(features, rownames(object))
-
+  
   # --- Extract expression data ---
   expression_matrix <- as.data.frame(GetAssayData(object, layer = "data"))
   expression_matrix <- expression_matrix[features, ]
-
+  
   # --- Metadata for cohort and patient ---
   cell_metadata <- data.frame(
     cell = colnames(expression_matrix),
     cohort_tp = object[[idents, drop = TRUE]],
     patient_id = object[[pseudobulk_column, drop = TRUE]]
   )
-
+  
   # --- Aggregate expression by patient ---
   grouped_expression <- expression_matrix %>%
     tibble::rownames_to_column(var = "gene") %>%
@@ -1331,28 +1675,26 @@ heatmap_pseudobulk <- function(object,
       values_from = mean_expression,
       values_fill = list(mean_expression = 0)
     )
-
+  
   # --- Convert to matrix ---
   grouped_expression_matrix <- as.matrix(grouped_expression[, -c(1)])
   rownames(grouped_expression_matrix) <- grouped_expression$gene
   grouped_expression_matrix <- grouped_expression_matrix[features, ]
-
+  
   # --- Compute z-scores per gene (row) ---
   zscore_matrix <- t(scale(t(grouped_expression_matrix)))
   zscore_matrix[is.na(zscore_matrix)] <- 0
-
+  
   # --- Prepare cohort grouping with custom order ---
-  # cohort_labels <- sapply(strsplit(colnames(zscore_matrix), " "), `[`, 1)
   cohort_labels <- sub(" [^ ]+$", "", colnames(zscore_matrix))
-
-  # Convert to factor with custom levels
   cohort_labels <- factor(cohort_labels, levels = groups)
-
+  
   # Reorder matrix columns by cohort_labels
   ord <- order(cohort_labels)
   zscore_matrix <- zscore_matrix[, ord]
   cohort_labels <- cohort_labels[ord]
   unique_cohorts <- unique(as.character(cohort_labels))
+  
   # Generate colors if not provided
   if (is.null(colors)) {
     n_colors <- length(unique_cohorts)
@@ -1364,22 +1706,57 @@ heatmap_pseudobulk <- function(object,
       palette_colors <- colorRampPalette(RColorBrewer::brewer.pal(12, "Set3"))(n_colors)
     }
     colors <- scales::alpha(palette_colors[1:n_colors], 0.8)
-  }else if(length(colors) < length(unique_cohorts)){
+  } else if (length(colors) < length(unique_cohorts)) {
     colors <- rep(colors, length.out = length(unique_cohorts))
   }
-  colors <- colors[1: length(unique_cohorts)]
+  colors <- colors[1:length(unique_cohorts)]
   names(colors) <- unique_cohorts
-
-
-  # --- Column annotation ---
+  
+  # --- Column annotation (cohort color bar) ---
+  # --- Combined column annotation: rotated group label block sitting directly
+  # above the Cohort color bar, with minimal gap between the two tracks ---
+  identity_anno_list <- setNames(list(cohort_labels), idents)
+  identity_anno_colors <- setNames(list(colors), idents)
+  
   ha <- HeatmapAnnotation(
-    Cohort = cohort_labels,
-    col = list(Cohort = colors),
+    group_label = anno_block(
+      gp = grid::gpar(fill = NA, col = NA),
+      labels = levels(cohort_labels),
+      labels_rot = angle_col,
+      labels_gp = grid::gpar(fontsize = 12),
+      height = grid::unit(3, "mm")
+    ),
+    df = identity_anno_list,
+    col = identity_anno_colors,
     show_legend = TRUE,
     annotation_name_side = "left",
-    simple_anno_size = annotation_height
+    simple_anno_size = annotation_height,
+    gap = grid::unit(1, "mm")
   )
-
+  
+  # --- Rotated group label block (replaces default column_title, which is
+  # locked to 0/90 degrees; anno_block's labels_rot allows arbitrary angles) ---
+  # group_label_anno <- HeatmapAnnotation(
+  #   group_label = anno_block(
+  #     gp = grid::gpar(fill = NA, col = NA),
+  #     labels = levels(cohort_labels),
+  #     labels_rot = angle_col,
+  #     labels_gp = grid::gpar(fontsize = 12)
+  #   ),
+  #   show_annotation_name = FALSE
+  # )
+  
+  # --- Build fontface vector for bold/italic gene labels ---
+  base_font <- ifelse(italic_genes, "italic", "plain")
+  bold_font <- ifelse(italic_genes, "bold.italic", "bold")
+  
+  if (!is.null(bold_genes)) {
+    gene_fontface <- ifelse(rownames(zscore_matrix) %in% bold_genes, bold_font, base_font)
+  } else {
+    gene_fontface <- base_font
+  }
+  
+  # --- Draw ComplexHeatmap ---
   # --- Draw ComplexHeatmap ---
   hm <- Heatmap(
     zscore_matrix,
@@ -1389,11 +1766,20 @@ heatmap_pseudobulk <- function(object,
     cluster_columns = cluster_columns,
     show_column_names = show_column_names,
     column_split = cohort_labels,
+    column_title = NULL,
     col = circlize::colorRamp2(color_range, color_palette),
     heatmap_legend_param = list(title = heatmap_title),
-    row_names_gp = grid::gpar(fontsize = 8)
+    row_names_gp = grid::gpar(fontsize = fontsize, fontface = gene_fontface)
   )
-
+  
+  # --- Optionally save to file ---
+  if (!is.null(file_name)) {
+    svg(file_name, width = width, height = height, bg = "white")
+    ComplexHeatmap::draw(hm)
+    dev.off()
+    message("Heatmap saved to ", file_name)
+  }
+  
   return(hm)
 }
 
@@ -1402,42 +1788,60 @@ heatmap_pseudobulk <- function(object,
 #'
 #' This function creates a heatmap showing gene expression averaged across cell types
 #' or groups. Expression values are aggregated by taking the mean across all cells
-#' within each group, then optionally row-scaled (z-score normalized) for visualization.
-#' It allows for customization of gene label appearance and optional row annotations.
+#' within each group, then optionally row- or column-scaled (z-score normalized) for
+#' visualization. A column annotation bar showing group identity is displayed by
+#' default, with column (group) names shown above the heatmap. It allows for
+#' customization of gene label appearance and optional row annotations.
 #'
 #' @param object A Seurat object containing expression data and metadata
 #' @param features Either a character vector of gene names, or a data frame where
 #'   the first column contains gene names and the second column contains annotation
 #'   category labels (e.g., "Memory/naive-like", "Effector"). When a data frame is
 #'   provided, gene order is preserved and a row annotation bar is automatically
-#'   generated from the category column.
+#'   generated from the category column, with gaps drawn at category boundaries.
 #' @param groups Character vector specifying the order of cell type/group labels.
 #'   This defines both which groups to include and their display order.
 #' @param idents Character string specifying the metadata column containing
 #'   cell type or group information. If NULL, defaults to "cohort_tp".
-#' @param bold_genes Character vector of gene names to render in **bold** text.
-#'   Uses \code{bquote(bold(...))} for formatting. Default is NULL (no bolding).
-#' @param row_fontsize Numeric value specifying the font size for row labels (gene names).
+#' @param bold_genes Character vector of gene names to render in bold text.
+#'   Default is NULL (no bolding).
+#' @param italic_genes Logical. If TRUE, renders all gene names in italic font.
+#'   Interacts with bold_genes to create bold-italic labels if both apply.
+#'   Default is FALSE.
+#' @param fontsize Numeric value specifying the font size for row labels (gene names).
 #'   Default is 10.
 #' @param normalize Logical indicating whether to normalize the data before plotting.
 #'   Default is TRUE.
 #' @param cluster_rows Logical indicating whether to cluster rows (genes).
 #'   Default is FALSE.
-#' @param cluster_cols Logical indicating whether to cluster columns (groups).
+#' @param cluster_columns Logical indicating whether to cluster columns (groups).
 #'   Default is FALSE.
 #' @param scale Character string indicating scaling method. Options are "row" (default),
 #'   "column", or "none".
 #' @param title Optional character string for plot title. Default is NA (no title).
-#' @param angle_col Character string or numeric specifying the angle for column labels.
-#'   Default is "315".
+#' @param angle_col Numeric. Rotation angle (in degrees) for column (group) names.
+#'   Default is 0 (horizontal, unrotated).
+#' @param show_column_annotation Logical indicating whether to display a colored
+#'   annotation bar above the heatmap showing group identity. Default is TRUE.
+#' @param group_colors Character vector of colors, one per group in \code{groups}
+#'   (assigned in order), used for the column annotation bar. If NULL, colors are
+#'   auto-generated from a standard palette. This is distinct from
+#'   \code{annotation_colors}, which governs the optional row (gene category) annotation.
 #' @param annotation_colors Optional character vector of colors assigned to annotation
 #'   categories in order of their first appearance in the features data frame. If
 #'   \code{NULL} and a data frame is passed to \code{features}, colors are
 #'   auto-generated.
-#' @param file_name Name of png file to save. Default is NULL (no file saved).
-#' @param ... Additional arguments passed to pheatmap::pheatmap()
+#' @param color_range Numeric vector specifying the color scale breakpoints. Used as
+#'   (min, center, max) when \code{scale} is "row" or "column". Default is c(-2, 0, 2).
+#' @param color_palette Character vector of length 3 specifying colors for
+#'   (min, center, max). Default is c("#4575b4", "white", "#d73027").
+#' @param file_name Character. File name for the saved heatmap (SVG). If NULL,
+#'   the plot is not saved. Default is NULL.
+#' @param width Numeric. Width of the output file in inches. Default is auto-calculated.
+#' @param height Numeric. Height of the output file in inches. Default is auto-calculated.
 #'
-#' @return A pheatmap object
+#' @return A ComplexHeatmap object. The heatmap is also saved to file if
+#'   file_name is provided.
 #'
 #' @details
 #' The function performs the following steps:
@@ -1447,104 +1851,107 @@ heatmap_pseudobulk <- function(object,
 #'   \item Averages expression across all cells within each group
 #'   \item Orders groups according to the specified order
 #'   \item If \code{features} is a data frame, builds a row annotation from the
-#'     second column, computes \code{gaps_row} automatically at category boundaries,
-#'     and assigns colors either from \code{annotation_colors} or auto-generated ones.
-#'   \item Creates a heatmap with row scaling (z-score by default)
+#'     second column, with gaps automatically drawn at category boundaries
+#'   \item By default, builds a column annotation bar showing group identity, colored
+#'     according to \code{group_colors} or an auto-generated palette, with column
+#'     names displayed above the heatmap
+#'   \item Applies row- or column-wise z-score scaling (or none) and draws the heatmap
 #' }
 #'
 #' @examples
 #' \dontrun{
-#' # Vector input (no annotation)
-#' heatmap_meta(
+#' # Vector input (no row annotation), default column annotation shown
+#' heatmap_group_level(
 #'   object   = obj,
 #'   features = c("CD3D", "CD8A", "IFNG", "FOXP3"),
 #'   groups   = c("CD4 T", "CD8 T", "NK")
 #' )
 #'
-#' # Data frame input (with annotation bar)
+#' # Data frame input, with bold/italic gene labels and custom group colors
 #' feat_df <- data.frame(
 #'   gene     = c("TOX", "HAVCR2", "GZMB", "PRF1", "MKI67", "TCF7", "CCR7"),
 #'   category = c("Exhausted", "Exhausted", "Effector", "Effector",
 #'                "Proliferation", "Memory", "Memory")
 #' )
-#' heatmap_meta(
-#'   object   = obj,
-#'   features = feat_df,
-#'   groups   = c("Chronic Pre-DAA", "Chronic Post-DAA", "ACTG Pre-DAA")
+#' heatmap_group_level(
+#'   object       = obj,
+#'   features     = feat_df,
+#'   groups       = c("Chronic Pre-DAA", "Chronic Post-DAA", "ACTG Pre-DAA"),
+#'   bold_genes   = c("TOX", "HAVCR2"),
+#'   italic_genes = TRUE,
+#'   group_colors = c("#F8A19F", "#2ED9FF", "#FEAF16")
 #' )
 #' }
 #'
 #' @export
-heatmap_meta <- function(object,
-                         features,
-                         groups,
-                         idents            = NULL,
-                         bold_genes        = NULL,
-                         row_fontsize      = 10,
-                         normalize         = TRUE,
-                         cluster_rows      = FALSE,
-                         cluster_cols      = FALSE,
-                         scale             = "row",
-                         title             = NA,
-                         angle_col         = "315",
-                         annotation_colors = NULL,
-                         file_name         = NULL,
-                         ...) {
-
+heatmap_group_level <- function(object,
+                                features,
+                                groups,
+                                idents                 = NULL,
+                                bold_genes             = NULL,
+                                italic_genes           = FALSE,
+                                fontsize            = 10,
+                                normalize               = TRUE,
+                                cluster_rows            = FALSE,
+                                cluster_columns         = FALSE,
+                                scale                   = "row",
+                                title                   = NA,
+                                angle_col               = 0,
+                                show_column_annotation  = TRUE,
+                                group_colors            = NULL,
+                                annotation_colors       = NULL,
+                                color_range             = c(-2, 0, 2),
+                                color_palette           = c("#4575b4", "white", "#d73027"),
+                                file_name               = NULL,
+                                width                   = NULL,
+                                height                  = NULL) {
+  
   # 1. Set default idents column
   if (is.null(idents)) {
     idents <- "cohort_tp"
   }
-
+  
   # 2. Parse features — vector or data frame
   if (is.data.frame(features)) {
     feat_df      <- features
-    feat_df <- feat_df[as.character(feat_df[[1]]) %in% rownames(obj),]
+    feat_df <- feat_df[as.character(feat_df[[1]]) %in% rownames(object), ]
     gene_vec     <- as.character(feat_df[[1]])
     category_vec <- as.character(feat_df[[2]])
-
-    # Build row annotation df, preserving category order of first appearance
+    category_col_name <- colnames(feat_df)[2]
+    
+    # Preserve category order of first appearance
     category_levels <- unique(category_vec)
-    gene_annotation <- data.frame(
-      category = factor(category_vec, levels = category_levels),
-      row.names = gene_vec,
-      stringsAsFactors = FALSE
-    )
-    colnames(gene_annotation) <- colnames(feat_df)[2]
-    annot_col_name <- colnames(feat_df)[2]
-
-    # Compute gaps_row at category boundaries
-    gaps_row <- which(diff(as.integer(factor(category_vec, levels = category_levels))) != 0)
-
-    # Build annotation colors: positional vector -> named list for pheatmap
+    category_factor <- factor(category_vec, levels = category_levels)
+    
     if (is.null(annotation_colors)) {
-      color_vec <- scales::hue_pal()(length(category_levels))
+      row_annotation_color_vec <- scales::hue_pal()(length(category_levels))
     } else {
-      color_vec <- annotation_colors
+      row_annotation_color_vec <- annotation_colors
     }
-    annotation_colors <- setNames(
-      list(setNames(color_vec[seq_along(category_levels)], category_levels)),
-      annot_col_name
+    row_annotation_color_vec <- setNames(
+      row_annotation_color_vec[seq_along(category_levels)],
+      category_levels
     )
-
+    
   } else {
-    gene_vec        <- as.character(features[features %in% rownames(object)])
-    gene_annotation <- NULL
-    gaps_row        <- NULL
+    gene_vec           <- as.character(features[features %in% rownames(object)])
+    category_factor     <- NULL
+    category_col_name   <- NULL
+    row_annotation_color_vec <- NULL
   }
-
+  
   # 3. Normalize if requested
   if (normalize) {
     object <- Seurat::NormalizeData(object)
   }
-
+  
   # 4. Extract expression data
   expression_matrix <- as.data.frame(Seurat::GetAssayData(object, layer = "data"))
   expression_matrix <- expression_matrix[gene_vec, ]
-
+  
   # 5. Add cell type annotations and summarize by group (mean)
   cell_annotations <- object[[idents, drop = TRUE]]
-
+  
   grouped_expression <- expression_matrix %>%
     tibble::rownames_to_column(var = "gene") %>%
     tidyr::pivot_longer(-gene, names_to = "cell", values_to = "expression") %>%
@@ -1555,67 +1962,128 @@ heatmap_meta <- function(object,
     dplyr::group_by(gene, cell_type) %>%
     dplyr::summarize(mean_expression = mean(expression), .groups = "drop") %>%
     tidyr::pivot_wider(names_from = cell_type, values_from = mean_expression)
-
+  
   # 6. Convert to matrix and order rows/columns
   grouped_expression_matrix <- as.matrix(grouped_expression[, -1])
   rownames(grouped_expression_matrix) <- grouped_expression$gene
   grouped_expression_matrix <- grouped_expression_matrix[gene_vec, ]
   grouped_expression_matrix <- grouped_expression_matrix[, groups]
-
-  # 7. Build bold row labels if requested
-  if (!is.null(bold_genes) && any(bold_genes %in% rownames(grouped_expression_matrix))) {
-    labels_expression <- lapply(rownames(grouped_expression_matrix), function(gene) {
-      if (gene %in% bold_genes) {
-        return(bquote(bold(.(as.character(gene)))))
-      } else {
-        return(bquote(.(as.character(gene))))
-      }
-    })
-    labels_expression <- as.expression(labels_expression)
+  
+  # 6b. Apply scaling
+  if (scale == "row") {
+    plot_matrix <- t(scale(t(grouped_expression_matrix)))
+    plot_matrix[is.na(plot_matrix)] <- 0
+  } else if (scale == "column") {
+    plot_matrix <- scale(grouped_expression_matrix)
+    plot_matrix[is.na(plot_matrix)] <- 0
   } else {
-    labels_expression <- rownames(grouped_expression_matrix)
+    plot_matrix <- grouped_expression_matrix
   }
-
-  # 8. Build pheatmap call arguments
-  heatmap_args <- list(
-    mat          = grouped_expression_matrix,
-    cluster_rows = cluster_rows,
-    cluster_cols = cluster_cols,
-    scale        = scale,
-    main         = title,
-    angle_col    = angle_col,
-    fontsize_row = row_fontsize,
-    labels_row   = labels_expression
+  
+  # 7. Build fontface vector for bold/italic gene labels
+  base_font <- ifelse(italic_genes, "italic", "plain")
+  bold_font <- ifelse(italic_genes, "bold.italic", "bold")
+  
+  if (!is.null(bold_genes)) {
+    gene_fontface <- ifelse(rownames(plot_matrix) %in% bold_genes, bold_font, base_font)
+  } else {
+    gene_fontface <- base_font
+  }
+  
+  # 8. Build row (gene category) annotation, if provided
+  row_anno <- NULL
+  if (!is.null(category_factor)) {
+    row_anno_list <- setNames(list(category_factor), category_col_name)
+    row_anno <- ComplexHeatmap::rowAnnotation(
+      df  = row_anno_list,
+      col = setNames(list(row_annotation_color_vec), category_col_name),
+      annotation_name_side = "top",
+      show_annotation_name = FALSE
+    )
+  }
+  
+  # 9. Build column (group) annotation, shown by default
+  col_anno <- NULL
+  if (show_column_annotation) {
+    if (is.null(group_colors)) {
+      n_groups <- length(groups)
+      if (n_groups <= 8) {
+        palette_colors <- RColorBrewer::brewer.pal(max(3, n_groups), "Set2")
+      } else if (n_groups <= 12) {
+        palette_colors <- RColorBrewer::brewer.pal(n_groups, "Set3")
+      } else {
+        palette_colors <- colorRampPalette(RColorBrewer::brewer.pal(12, "Set3"))(n_groups)
+      }
+      group_colors <- palette_colors[seq_along(groups)]
+    } else if (length(group_colors) < length(groups)) {
+      stop("'group_colors' must supply at least as many colors as there are groups (",
+           length(groups), " groups provided).")
+    }
+    group_colors <- setNames(group_colors[seq_along(groups)], groups)
+    
+    col_anno_list <- setNames(list(factor(groups, levels = groups)), idents)
+    col_anno <- ComplexHeatmap::HeatmapAnnotation(
+      df  = col_anno_list,
+      col = setNames(list(group_colors), idents),
+      show_legend = TRUE,
+      annotation_name_side = "left",
+      show_annotation_name = T
+    )
+  }
+  
+  # 10. Build color mapping function
+  if (scale == "none") {
+    data_range <- range(plot_matrix, na.rm = TRUE)
+    col_fun <- circlize::colorRamp2(
+      breaks = c(data_range[1], mean(data_range), data_range[2]),
+      colors = color_palette
+    )
+    legend_title <- ifelse(is.na(title), "Expression", title)
+  } else {
+    col_fun <- circlize::colorRamp2(
+      breaks = color_range,
+      colors = color_palette
+    )
+    legend_title <- ifelse(is.na(title), "Z-score", title)
+  }
+  
+  # 11. Draw ComplexHeatmap
+  hm <- ComplexHeatmap::Heatmap(
+    plot_matrix,
+    name                = legend_title,
+    col                 = col_fun,
+    top_annotation      = col_anno,
+    left_annotation     = row_anno,
+    cluster_rows        = cluster_rows,
+    cluster_columns     = cluster_columns,
+    row_split           = category_factor,
+    row_title_rot       = 0,
+    row_gap             = grid::unit(2, "mm"),
+    show_column_names   = TRUE,
+    column_names_side   = "top",
+    column_names_rot    = angle_col,
+    show_row_names      = TRUE,
+    row_names_gp         = grid::gpar(fontsize = fontsize, fontface = gene_fontface),
+    heatmap_legend_param = list(title = legend_title),
+    column_title        = if (!is.na(title)) title else NULL
   )
-
-  # Add annotation arguments only when a data frame was provided
-  if (!is.null(gene_annotation)) {
-    heatmap_args$annotation_row    <- gene_annotation
-    heatmap_args$gaps_row          <- gaps_row
-    heatmap_args$annotation_colors <- annotation_colors
-  }
-
-  # Merge any extra user-supplied arguments
-  extra_args <- list(...)
-  heatmap_args <- c(heatmap_args, extra_args)
-
-  # 9. Draw heatmap
-  p <- do.call(pheatmap::pheatmap, heatmap_args)
-
-  # 10. Optionally save to PNG
+  ComplexHeatmap::draw(hm)
+  # 12. Optionally save to file
   if (!is.null(file_name)) {
-    width  <- length(unique(groups))  * 0.5 + 5
-    height <- length(unique(gene_vec)) * 0.35 + 6
-    png(filename = file_name,
-        width    = width,
-        height   = height,
-        units    = "cm",
-        res      = 200)
-    print(p)
+    if (is.null(height)) {
+      n_genes <- nrow(plot_matrix)
+      height  <- max(6, 3 + n_genes * 0.2)
+    }
+    if (is.null(width)) {
+      width <- max(5, 2 + length(groups) * 0.6)
+    }
+    svg(file_name, width = width, height = height, bg = "white")
+    ComplexHeatmap::draw(hm)
     dev.off()
+    message("Heatmap saved to ", file_name)
   }
-
-  return(p)
+  
+  return(hm)
 }
 
 
@@ -1688,7 +2156,7 @@ heatmap_meta <- function(object,
 #' @examples
 #' \dontrun{
 #' # Vector input, highlight a few genes
-#' heatmap_meta(
+#' heatmap_group_level(
 #'   object     = obj,
 #'   features   = c("CD3D", "CD8A", "IFNG", "FOXP3", "TOX", "TCF7"),
 #'   groups     = c("CD4 T", "CD8 T", "NK"),
@@ -1701,7 +2169,7 @@ heatmap_meta <- function(object,
 #'   category = c("Exhausted", "Exhausted", "Effector", "Effector",
 #'                "Proliferation", "Memory", "Memory")
 #' )
-#' heatmap_meta(
+#' heatmap_group_level(
 #'   object     = obj,
 #'   features   = feat_df,
 #'   groups     = c("Chronic Pre-DAA", "Chronic Post-DAA", "ACTG Pre-DAA"),
@@ -1710,7 +2178,7 @@ heatmap_meta <- function(object,
 #' }
 #'
 #' @export
-heatmap_meta.V2 <- function(object,
+heatmap_group_level.V2 <- function(object,
                             features,
                             groups,
                             idents            = NULL,
@@ -1945,7 +2413,7 @@ heatmap_meta.V2 <- function(object,
 #' @param direction Character string specifying which genes to include in the Venn.
 #'   Options are "up" (upregulated in ident.1), "down" (downregulated in ident.1),
 #'   or "both". Default is "up".
-#' @param log2fc_threshold Numeric value specifying the minimum absolute log2
+#' @param log2fc_cutoff Numeric value specifying the minimum absolute log2
 #'   fold change threshold for significance. Default is 0.58.
 #' @param min_pct Numeric value specifying the minimum fraction of cells expressing
 #'   the gene in either group. Default is 0.3.
@@ -1982,9 +2450,9 @@ heatmap_meta.V2 <- function(object,
 #'   \item Creates an area-proportional Venn/Euler diagram showing overlaps
 #' }
 #'
-#' For "up" direction, genes are filtered where avg_log2FC > log2fc_threshold.
-#' For "down" direction, genes are filtered where avg_log2FC < -log2fc_threshold.
-#' For "both" direction, genes are filtered where |avg_log2FC| > log2fc_threshold.
+#' For "up" direction, genes are filtered where avg_log2FC > log2fc_cutoff.
+#' For "down" direction, genes are filtered where avg_log2FC < -log2fc_cutoff.
+#' For "both" direction, genes are filtered where |avg_log2FC| > log2fc_cutoff.
 #'
 #' @examples
 #' \dontrun{
@@ -1999,7 +2467,7 @@ heatmap_meta.V2 <- function(object,
 #'   object = object,
 #'   comparisons = comparisons,
 #'   idents = "Cohort_tp_mutation",
-#'   log2fc_threshold = 0.58,
+#'   log2fc_cutoff = 0.58,
 #'   min_pct = 0.3,
 #'   main = "Upregulated Genes"
 #' )
@@ -2016,7 +2484,7 @@ heatmap_meta.V2 <- function(object,
 #'   comparisons = comparisons,
 #'   idents = "treatment",
 #'   direction = "down",
-#'   log2fc_threshold = 0.5
+#'   log2fc_cutoff = 0.5
 #' )
 #'
 #' # Access results
@@ -2029,7 +2497,7 @@ venn_plots <- function(object,
                               comparisons,
                               idents,
                               direction = "up",
-                              log2fc_threshold = log2(1.5),
+                              log2fc_cutoff = log2(1.5),
                               min_pct = 0.01,
                               p_adj_cutoff = 0.05,
                               fills = NULL,
@@ -2046,8 +2514,8 @@ venn_plots <- function(object,
     stop("comparisons must be a named list")
   }
 
-  if (length(comparisons) < 3 || length(comparisons) > 6) {
-    stop("Number of comparisons must be between 3 and 6")
+  if (length(comparisons) < 2 || length(comparisons) > 6) {
+    stop("Number of comparisons must be between 2 and 6")
   }
 
   if (!idents %in% colnames(object@meta.data)) {
@@ -2093,15 +2561,15 @@ venn_plots <- function(object,
     # Filter genes based on direction
     if (direction == "up") {
       filtered_genes <- rownames(
-        markers %>% dplyr::filter(p_val_adj < p_adj_cutoff, avg_log2FC >= log2fc_threshold)
+        markers %>% dplyr::filter(p_val_adj < p_adj_cutoff, avg_log2FC >= log2fc_cutoff)
       )
     } else if (direction == "down") {
       filtered_genes <- rownames(
-        markers %>% dplyr::filter(p_val_adj < p_adj_cutoff, avg_log2FC <= -log2fc_threshold)
+        markers %>% dplyr::filter(p_val_adj < p_adj_cutoff, avg_log2FC <= -log2fc_cutoff)
       )
     } else {  # both
       filtered_genes <- rownames(
-        markers %>% dplyr::filter(p_val_adj < p_adj_cutoff, abs(avg_log2FC) >= log2fc_threshold)
+        markers %>% dplyr::filter(p_val_adj < p_adj_cutoff, abs(avg_log2FC) >= log2fc_cutoff)
       )
     }
 
@@ -2137,7 +2605,7 @@ venn_plots <- function(object,
   if (is.null(subtitle)) {
     subtitle <- paste0(
       "min.pct = ", min_pct,
-      "  |log2FC| >= ", round(log2fc_threshold,3),
+      "  |log2FC| >= ", round(log2fc_cutoff,3),
       "  p.adj < ", p_adj_cutoff
     )
   }
@@ -2166,6 +2634,181 @@ venn_plots <- function(object,
     markers = markers_list,
     genes = genes_list,
     euler_fit = fit
+  ))
+}
+
+#' Plot Top N Usage Columns From cNMF Gene Spectra
+#'
+#' This function reads cNMF gene spectra, normalizes them, extracts gene-level
+#' statistics (min/median/max) from a Seurat object, and produces barplots for
+#' the top-N contributing genes per program. It also returns a top-gene table.
+#'
+#' @param dir_path Character. Directory containing cNMF output files.
+#' @param object Seurat or SingleCellExperiment object containing normalized data.
+#' @param output_dir Directory where PNG plots should be saved.
+#' @param top_n Number of top genes to extract and plot (default = 30).
+#' @param show_metrics Logical. If TRUE, add min/median/max labels to bars.
+#' @param highlight_genes A gene list to be bold and red on barplots. If NULL, output without hightlight.
+#'
+#' @return A list containing:
+#'   \item{top_df}{Data frame of top-N genes per program}
+#'   \item{file_used}{Path to the CNMF spectrum file used}
+#'
+#' @export
+cnmf_bar_plots <- function(
+    dir_path,
+    object,
+    output_dir,
+    top_n = 30,
+    show_metrics = FALSE,
+    highlight_genes = NULL
+) {
+  
+  # --- Setup and Data Loading ---
+  
+  if (!dir.exists(dir_path))
+    stop("dir_path does not exist.")
+  
+  if (!dir.exists(output_dir))
+    dir.create(output_dir, recursive = TRUE)
+  
+  file_name <- list.files(
+    dir_path,
+    pattern = "cnmf_run\\.gene_spectra_score.*\\.dt_0_20\\.txt$",
+    full.names = TRUE
+  )
+  if (length(file_name) == 0)
+    stop("No CNMF spectrum files found.")
+  
+  file_name <- file_name[1]
+  gene_by_pro <- read.table(file_name, fill = TRUE, header = TRUE, row.names = 1)
+  
+  # --- Extract top-N genes (table output) ---
+  
+  # The top_df will store the raw gene names
+  top_matrix <- matrix(nrow = nrow(gene_by_pro), ncol = top_n)
+  rownames(top_matrix) <- rownames(gene_by_pro)
+  
+  for (i in seq_len(nrow(gene_by_pro))) {
+    row_data <- as.numeric(gene_by_pro[i, ])
+    top_idx <- order(row_data, decreasing = TRUE)[1:top_n]
+    top_matrix[i, ] <- colnames(gene_by_pro)[top_idx]
+  }
+  
+  top_df <- as.data.frame(t(top_matrix))
+  colnames(top_df) <- paste0("Usage_", colnames(top_df))
+  
+  # --- Prepare output data frame for highlighting ---
+  if (!is.null(highlight_genes)) {
+    # Function to apply highlighting format (Markdown/HTML)
+    format_gene <- function(gene) {
+      if (gene %in% highlight_genes) {
+        # Use HTML/Markdown for bold and red text
+        return(paste0("<span style='color:red;'>**", gene, "**</span>"))
+      } else {
+        return(gene)
+      }
+    }
+  }
+  
+  # --- Normalize data and extract metrics ---
+  gene_by_pro <- t(apply(gene_by_pro, 1, function(x) (x - min(x)) / (max(x) - min(x))))
+  
+  # colnames(gene_by_pro) <- gsub("\\.", "-", colnames(gene_by_pro))
+  
+  norm_data <- SeuratObject::GetAssayData(object, layer = "data") |> as.matrix()
+  norm_data <- norm_data[colnames(gene_by_pro), ]
+  
+  gene_medians <- matrixStats::rowMedians(norm_data)
+  gene_maxs    <- matrixStats::rowMaxs(norm_data)
+  
+  norm_data[norm_data == 0] <- NA
+  gene_mins <- matrixStats::rowMins(norm_data, na.rm = TRUE)
+  
+  # Dynamic plot size (Unchanged)
+  width_px  <- 1000
+  height_px <- 1000 + ((top_n - 30) * 20)
+  
+  # --- Helper Plot Function ---
+  plot_top_columns <- function(row_data, row_name, gene_mins, gene_medians, gene_maxs, highlight_genes) {
+    
+    top_idx    <- order(row_data, decreasing = TRUE)[1:top_n] |> rev()
+    top_vals   <- row_data[top_idx] |> rev()
+    top_genes  <- names(top_vals)
+    
+    # Apply highlighting format for PLOT LABELS
+    formatted_genes <- sapply(top_genes, function(gene) {
+      if (!is.null(highlight_genes) && gene %in% highlight_genes) {
+        # Use Markdown/HTML syntax for ggtext
+        return(paste0("<span style='color:red;'>**", gene, "**</span>"))
+      } else {
+        return(gene)
+      }
+    })
+    
+    # Create factors from formatted genes
+    formatted_genes_factor <- factor(formatted_genes, levels = rev(formatted_genes))
+    
+    if (show_metrics) {
+      plot_data <- data.frame(
+        Column     = formatted_genes_factor,
+        Value      = top_vals,
+        MinExpr    = round(gene_mins[top_genes], 4),
+        MedianExpr = round(gene_medians[top_genes], 4),
+        MaxExpr    = round(gene_maxs[top_genes], 4)
+      )
+    } else {
+      plot_data <- data.frame(
+        Column = formatted_genes_factor,
+        Value  = top_vals
+      )
+    }
+    
+    p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = Column, y = Value, fill = Value)) +
+      ggplot2::geom_bar(stat = "identity") +
+      ggplot2::labs(
+        title = paste("Usage", row_name),
+        x = "",
+        y = "Values"
+      ) +
+      ggplot2::theme_classic() +
+      ggplot2::coord_flip() +
+      ggplot2::scale_fill_gradient(low = "#68bdde", high = "#de6868") +
+      # Use ggtext::element_markdown() to interpret the HTML/Markdown in the labels
+      ggplot2::theme(
+        axis.text.y = ggtext::element_markdown(),
+        axis.text.x = ggplot2::element_text(angle = 90, hjust = 1)
+      )
+    
+    if (show_metrics) {
+      p <- p +
+        ggplot2::geom_text(
+          ggplot2::aes(label = paste0(MinExpr, "  ", MedianExpr, "  ", MaxExpr)),
+          hjust = 1,
+          size = 2
+        )
+    }
+    
+    outfile <- file.path(output_dir, paste0("Usage_", row_name, ".png"))
+    grDevices::png(outfile, width = width_px, height = height_px, res = 200)
+    print(p)
+    grDevices::dev.off()
+  }
+  
+  # --- Loop and plot ---
+  for (i in seq_len(nrow(gene_by_pro))) {
+    row_name <- rownames(gene_by_pro)[i]
+    row_data <- gene_by_pro[i, ]
+    # Pass the highlight_genes argument to the helper function
+    plot_top_columns(row_data, row_name, gene_mins, gene_medians, gene_maxs, highlight_genes)
+  }
+  
+  message("Finished generating plots in: ", output_dir)
+  
+  return(list(
+    # Return the data frame with HTML/Markdown formatting
+    top_df = top_df,
+    file_used = file_name
   ))
 }
 
@@ -2428,7 +3071,7 @@ cnmf_top_programs <- function(obj,
 
 #' Compare Overlap Between Two cNMF Program Sets
 #'
-#' This function automatically finds cNMF *gene_spectra_tpm* files inside two
+#' This function automatically finds cNMF *gene_spectra_score* files inside two
 #' directories, extracts the top-N genes from each program, optionally filters
 #' to variable features, and plots an overlap heatmap.
 #'
@@ -2453,60 +3096,60 @@ compare_cnmf_programs <- function(
     heatmap_title = "Usage Similarity",
     vf_only = TRUE
 ) {
-
+  
   # --- Internal helper: find the CNMF spectra file ---
   find_cnmf_file <- function(dir_path) {
     file <- list.files(
       dir_path,
-      pattern = "cnmf_run\\.gene_spectra_tpm.*\\.dt_0_20\\.txt$",
+      pattern = "cnmf_run\\.gene_spectra_score.*\\.dt_0_20\\.txt$",
       full.names = TRUE
     )
     if (length(file) == 0)
-      stop(paste("No CNMF gene_spectra_tpm file found in:", dir_path))
-
+      stop(paste("No CNMF gene_spectra_score file found in:", dir_path))
+    
     return(file[1])
   }
-
+  
   # --- Internal helper: get top-N genes per program ---
   get_top_genes <- function(cnmf_matrix, top_n) {
     top_matrix <- matrix(nrow = nrow(cnmf_matrix), ncol = top_n)
     rownames(top_matrix) <- rownames(cnmf_matrix)
-
+    
     for (i in 1:nrow(cnmf_matrix)) {
       row_data <- as.numeric(cnmf_matrix[i, ])
       top_idx <- order(row_data, decreasing = TRUE)[1:top_n]
       top_genes <- colnames(cnmf_matrix)[top_idx]
       top_matrix[i, ] <- top_genes
     }
-
+    
     df <- as.data.frame(t(top_matrix))
     colnames(df) <- paste0("Usage_", colnames(df))
     return(df)
   }
   file1 <- find_cnmf_file(dir1)
   file2 <- find_cnmf_file(dir2)
-
+  
   cnmf1 <- read.table(file1, header = TRUE, fill = TRUE, row.names = 1)
   cnmf2 <- read.table(file2, header = TRUE, fill = TRUE, row.names = 1)
-
+  
   top_df1 <- get_top_genes(cnmf1, top_n)
   top_df2 <- get_top_genes(cnmf2, top_n)
-
+  
   if (vf_only) {
     vfs <- VariableFeatures(object)
-
+    
     top_df1 <- top_df1 %>%
       dplyr::mutate(across(everything(), ~ ifelse(.x %in% vfs, .x, NA)))
-
+    
     top_df2 <- top_df2 %>%
       dplyr::mutate(across(everything(), ~ ifelse(.x %in% vfs, .x, NA)))
   }
-
+  
   k1 <- ncol(top_df1)
   k2 <- ncol(top_df2)
-
+  
   overlap_matrix <- matrix(0, nrow = k1, ncol = k2)
-
+  
   for (i in 1:k1) {
     genes1 <- as.character(unlist(top_df1[, i]))
     for (j in 1:k2) {
@@ -2514,10 +3157,10 @@ compare_cnmf_programs <- function(
       overlap_matrix[i, j] <- length(intersect(genes1, genes2))
     }
   }
-
+  
   rownames(overlap_matrix) <- paste0(label1, "_", 1:k1)
   colnames(overlap_matrix) <- paste0(label2, "_", 1:k2)
-
+  
   p <- pheatmap::pheatmap(
     overlap_matrix,
     cluster_rows = FALSE,
@@ -2527,15 +3170,16 @@ compare_cnmf_programs <- function(
     angle_col = 45,
     main = heatmap_title
   )
-
+  
   print(p)
-
+  
   return(list(
     overlap_matrix = overlap_matrix,
     top_df1 = top_df1,
     top_df2 = top_df2
   ))
 }
+
 
 #' Plot Paired Gene Expression with Links and Faceting
 #'
@@ -3405,7 +4049,8 @@ dot_box_facet_plot <- function(
   
   p <- p +
     ggplot2::geom_boxplot(
-      data          = dplyr::filter(pct_data_filled, !is_zero),
+      # data          = dplyr::filter(pct_data_filled, !is_zero),
+      data          = pct_data_filled,
       mapping       = ggplot2::aes(fill = group),
       width         = 0.6,
       outlier.shape = NA,
